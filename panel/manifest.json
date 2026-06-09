@@ -13,7 +13,7 @@
       "minimumSize": { "width": 300, "height": 600 },
       "maximumSize": { "width": 800, "height": 1200 },
       "defaultSize": { "width": 380, "height": 720 },
-      "main": "index.html"
+      "main": "dist/index.html"
     }
   ],
   "requiredPermissions": {
