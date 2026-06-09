@@ -1,0 +1,35 @@
+{
+  "manifestVersion": 5,
+  "id": "com.kademedia.autoedit",
+  "name": "KADE AutoEdit AI",
+  "version": "1.0.0",
+  "description": "AI-powered auto-editing panel for Premiere Pro",
+  "author": "Kade Media",
+  "entrypoints": [
+    {
+      "type": "panel",
+      "id": "mainPanel",
+      "label": { "default": "KADE AutoEdit" },
+      "minimumSize": { "width": 300, "height": 600 },
+      "maximumSize": { "width": 800, "height": 1200 },
+      "defaultSize": { "width": 380, "height": 720 },
+      "main": "index.html"
+    }
+  ],
+  "requiredPermissions": {
+    "clipboard": "readAndWrite",
+    "localFileSystem": "request",
+    "network": {
+      "domains": ["http://localhost:8472", "ws://localhost:8472"]
+    },
+    "ipc": {
+      "enablePluginCommunication": true
+    }
+  },
+  "host": [
+    {
+      "app": "PPro",
+      "minVersion": "24.0"
+    }
+  ]
+}
