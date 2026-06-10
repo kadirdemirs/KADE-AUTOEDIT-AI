@@ -82,8 +82,14 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch {
       /* uxp storage may be unavailable */
     }
-    document.body.style.background = t.bg;
-    document.body.style.color = t.text;
+    try {
+      if (typeof document !== "undefined" && document.body) {
+        document.body.style.background = t.bg;
+        document.body.style.color = t.text;
+      }
+    } catch {
+      /* uxp document may differ */
+    }
   }, [name, t]);
 
   const toggle = () => setName((n) => (n === "dark" ? "light" : "dark"));
