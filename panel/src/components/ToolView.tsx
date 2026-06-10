@@ -17,135 +17,29 @@ import {
   TranscriptResult,
   ViralDetectResult,
 } from "../types";
-import { api } from "../services/api";
+import { api, TimelineSource } from "../services/api";
 import { wsService } from "../services/websocket";
+import { premiereAPI } from "../services/premiere";
 import { useTheme } from "../theme";
-import { Badge, Banner, Button, Card, Field, FilePicker, NumberInput, Select, Slider, Toggle } from "./ui";
-
-export type ModuleType =
-  | "silence"
-  | "whisper"
-  | "beat"
-  | "scene"
-  | "color"
-  | "captions"
-  | "zoom"
-  | "viral"
-  | "podcast"
-  | "repeat"
-  | "profanity"
-  | "chapters"
-  | "resize"
-  | "broll";
+import { useTimelineClip } from "../hooks/useTimelineClip";
+import { MODULE_META, ModuleType } from "./moduleMeta";
+import {
+  Badge,
+  Banner,
+  Button,
+  Field,
+  NumberInput,
+  Select,
+  Slider,
+  Toggle,
+  TimelineClipCard,
+  BackButton,
+} from "./ui";
 
 interface Props {
   type: ModuleType;
-  onResult?: (cuts: CutPoint[]) => void;
+  onBack: () => void;
 }
-
-const MODULE_META: Record<
-  ModuleType,
-  { label: string; icon: string; accent: string; description: string; tag: string }
-> = {
-  silence: {
-    label: "Sessizlik Kesici",
-    icon: "✂️",
-    accent: "#4a9eff",
-    description: "Boşlukları, nefes aralarını ve gereksiz beklemeleri otomatik kesim noktalarına çevirir.",
-    tag: "Kesim",
-  },
-  whisper: {
-    label: "Whisper Transkript",
-    icon: "📝",
-    accent: "#7c4dff",
-    description: "Konuşmayı yazıya döker; istersen dolgu kelimelerini timeline kesimi olarak önerir.",
-    tag: "Metin",
-  },
-  beat: {
-    label: "Beat Sync",
-    icon: "🥁",
-    accent: "#ff4081",
-    description: "Müziğin BPM ve beat noktalarını çıkarır; montajı ritme oturtmak için analiz üretir.",
-    tag: "Ritim",
-  },
-  scene: {
-    label: "Sahne Tespiti",
-    icon: "🎞️",
-    accent: "#00acc1",
-    description: "Görüntü değişimlerini yakalar ve uzun videoyu sahne parçalarına ayırır.",
-    tag: "Analiz",
-  },
-  color: {
-    label: "Otomatik Renk",
-    icon: "🎨",
-    accent: "#f59e0b",
-    description: "Renk, LUT ve ses seviyesi önerileri üretir; hızlı teknik dengeleme için kullanılır.",
-    tag: "Renk",
-  },
-  captions: {
-    label: "Auto Captions",
-    icon: "💬",
-    accent: "#26a69a",
-    description: "Transkriptten altyazı blokları üretir ve seçtiğin sosyal medya stiline hazırlar.",
-    tag: "Altyazı",
-  },
-  zoom: {
-    label: "Auto Zoom",
-    icon: "🔍",
-    accent: "#ec407a",
-    description: "Konuşma veya vurgu anlarında dinamik zoom keyframe önerileri çıkarır.",
-    tag: "Hareket",
-  },
-  viral: {
-    label: "Viral Detector",
-    icon: "🔥",
-    accent: "#ff7043",
-    description: "Uzun videodan kısa klip adayları bulur ve en güçlü bölümleri puanlar.",
-    tag: "Shorts",
-  },
-  podcast: {
-    label: "Podcast Mode",
-    icon: "🎙️",
-    accent: "#66bb6a",
-    description: "Konuşmacı segmentlerini düzenler ve podcast kayıtları için temiz akış önerir.",
-    tag: "Podcast",
-  },
-  repeat: {
-    label: "Repeat Detector",
-    icon: "🔁",
-    accent: "#ab47bc",
-    description: "Tekrar edilen cümleleri ve denemeleri gruplayıp korunacak en iyi take'i seçer.",
-    tag: "Tekrar",
-  },
-  profanity: {
-    label: "Profanity Filter",
-    icon: "🛡️",
-    accent: "#ef5350",
-    description: "Küfür veya riskli kelimeleri bleep, beep ya da mute noktalarına dönüştürür.",
-    tag: "Temizleme",
-  },
-  chapters: {
-    label: "Auto Chapters",
-    icon: "📚",
-    accent: "#5c6bc0",
-    description: "YouTube açıklaması için zaman kodlu bölüm başlıkları ve açıklama bloğu üretir.",
-    tag: "Bölüm",
-  },
-  resize: {
-    label: "Auto Resize",
-    icon: "📐",
-    accent: "#29b6f6",
-    description: "Farklı sosyal medya oranları için merkez/crop önerileri hazırlar.",
-    tag: "Format",
-  },
-  broll: {
-    label: "B-Roll Suggest",
-    icon: "🧩",
-    accent: "#ffa726",
-    description: "Transkripte göre b-roll arama sorguları ve yerleştirme zamanları önerir.",
-    tag: "B-roll",
-  },
-};
 
 const modelOptions = ["tiny", "base", "small", "medium", "large"];
 const languageOptions = [
@@ -154,15 +48,22 @@ const languageOptions = [
   { value: "auto", label: "Otomatik" },
 ];
 
-export const ModuleCard: React.FC<Props> = ({ type, onResult }) => {
+// Modules whose results are cut points we can apply straight to the timeline.
+const APPLIES_CUTS: ModuleType[] = ["silence", "whisper", "podcast", "repeat"];
+
+export const ToolView: React.FC<Props> = ({ type, onBack }) => {
   const { t } = useTheme();
   const meta = MODULE_META[type];
-  const [file, setFile] = useState<File | null>(null);
+  const { clip, hasMedia, refresh, refreshing } = useTimelineClip();
+
   const [progress, setProgress] = useState(0);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+  const [cuts, setCuts] = useState<CutPoint[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [applyMsg, setApplyMsg] = useState<string | null>(null);
 
+  // Module params (same set ModuleCard exposed).
   const [threshold, setThreshold] = useState(-40);
   const [minSilenceMs, setMinSilenceMs] = useState(500);
   const [keepPaddingMs, setKeepPaddingMs] = useState(100);
@@ -186,81 +87,58 @@ export const ModuleCard: React.FC<Props> = ({ type, onResult }) => {
   const [maxChapters, setMaxChapters] = useState(12);
   const [maxSuggestions, setMaxSuggestions] = useState(20);
 
-  const handleRun = async () => {
-    if (!file) {
-      setError("Lütfen bir video veya ses dosyası seç.");
-      return;
-    }
+  const source: TimelineSource | null = clip?.mediaPath
+    ? { sourcePath: clip.mediaPath, sourceStart: clip.sourceIn, sourceEnd: clip.sourceOut }
+    : null;
 
-    setRunning(true);
-    setProgress(0);
-    setError(null);
-    setResult(null);
-
-    const unsub = wsService.onMessage((e) => {
-      if (e.event === "progress") setProgress(e.progress ?? 0);
-      if (e.event === "job_done") setProgress(100);
-    });
-
-    try {
-      const data = await runModule(file);
-      setModuleResult(data.result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      unsub();
-      setRunning(false);
-    }
-  };
-
-  const runModule = (targetFile: File) => {
+  const runModule = (src: TimelineSource) => {
     switch (type) {
       case "silence":
-        return api.silenceCut(targetFile, {
+        return api.silenceCutPath(src, {
           threshold_db: threshold,
           min_silence_ms: minSilenceMs,
           keep_padding_ms: keepPaddingMs,
           fade_ms: fade ? 50 : 0,
         });
       case "whisper":
-        return api.transcript(targetFile, { model_name: whisperModel, language, detect_fillers: detectFillers });
+        return api.transcriptPath(src, { model_name: whisperModel, language, detect_fillers: detectFillers });
       case "beat":
-        return api.beatSync(targetFile, { sensitivity });
+        return api.beatSyncPath(src, { sensitivity });
       case "scene":
-        return api.sceneDetect(targetFile, { threshold: sceneThreshold });
+        return api.sceneDetectPath(src, { threshold: sceneThreshold });
       case "color":
-        return api.autoColor(targetFile, { target_lufs: targetLufs, denoise });
+        return api.autoColorPath(src, { target_lufs: targetLufs, denoise });
       case "captions":
-        return api.autoCaptions(targetFile, { model_name: whisperModel, language, style: captionStyle });
+        return api.autoCaptionsPath(src, { model_name: whisperModel, language, style: captionStyle });
       case "zoom":
-        return api.autoZoom(targetFile, { min_scale: minScale, max_scale: maxScale, sensitivity });
+        return api.autoZoomPath(src, { min_scale: minScale, max_scale: maxScale, sensitivity });
       case "viral":
-        return api.viralDetect(targetFile, {
+        return api.viralDetectPath(src, {
           clip_duration: clipDuration,
           top_n: topN,
           min_duration: Math.min(20, clipDuration),
         });
       case "podcast":
-        return api.podcastMode(targetFile, { min_segment_duration: minSegmentDuration });
+        return api.podcastModePath(src, { min_segment_duration: minSegmentDuration });
       case "repeat":
-        return api.repeatDetect(targetFile, {
+        return api.repeatDetectPath(src, {
           model_name: whisperModel,
           language,
           similarity_threshold: similarityThreshold,
         });
       case "profanity":
-        return api.profanityFilter(targetFile, { model_name: whisperModel, language, replacement });
+        return api.profanityFilterPath(src, { model_name: whisperModel, language, replacement });
       case "chapters":
-        return api.autoChapters(targetFile, {
+        return api.autoChaptersPath(src, {
           model_name: whisperModel,
           language,
           min_chapter_duration: minChapterDuration,
           max_chapters: maxChapters,
         });
       case "resize":
-        return api.autoResize(targetFile, {});
+        return api.autoResizePath(src, {});
       case "broll":
-        return api.brollSuggest(targetFile, {
+        return api.brollSuggestPath(src, {
           model_name: whisperModel,
           language,
           min_duration: minSegmentDuration,
@@ -270,17 +148,18 @@ export const ModuleCard: React.FC<Props> = ({ type, onResult }) => {
   };
 
   const setModuleResult = (payload: unknown) => {
+    setCuts([]);
     switch (type) {
       case "silence": {
         const res = payload as SilenceCutResult;
         setResult(`${res.cuts_count} kesim bulundu. Sessizlik: ${res.total_silence_duration.toFixed(1)}s`);
-        onResult?.(res.cut_points);
+        setCuts(res.cut_points);
         break;
       }
       case "whisper": {
         const res = payload as TranscriptResult;
-        setResult(`"${res.text.slice(0, 120)}..." - ${res.filler_words_found.length} dolgu kelime`);
-        onResult?.(res.filler_cut_points);
+        setResult(`"${res.text.slice(0, 120)}..." — ${res.filler_words_found.length} dolgu kelime`);
+        setCuts(res.filler_cut_points);
         break;
       }
       case "beat": {
@@ -296,7 +175,7 @@ export const ModuleCard: React.FC<Props> = ({ type, onResult }) => {
       case "color": {
         const res = payload as AutoColorResult;
         setResult(
-          `LUT: ${res.color_settings.lut_suggestion} | LUFS: ${res.audio_settings.current_lufs.toFixed(1)} -> ${res.audio_settings.target_lufs}`,
+          `LUT: ${res.color_settings.lut_suggestion} | LUFS: ${res.audio_settings.current_lufs.toFixed(1)} → ${res.audio_settings.target_lufs}`,
         );
         break;
       }
@@ -319,18 +198,18 @@ export const ModuleCard: React.FC<Props> = ({ type, onResult }) => {
       case "podcast": {
         const res = payload as PodcastResult;
         setResult(`${res.total_speakers} konuşmacı, ${res.segments.length} segment`);
-        onResult?.(res.cut_points);
+        setCuts(res.cut_points);
         break;
       }
       case "repeat": {
         const res = payload as RepeatDetectResult;
         setResult(`${res.total_groups} tekrar grubu. Kazanılan süre: ${res.time_saved.toFixed(1)}s`);
-        onResult?.(res.cuts_suggested);
+        setCuts(res.cuts_suggested);
         break;
       }
       case "profanity": {
         const res = payload as ProfanityResult;
-        setResult(`${res.total_found} riskli kelime bulundu: ${res.words_found.join(", ") || "temiz"}`);
+        setResult(`${res.total_found} riskli kelime: ${res.words_found.join(", ") || "temiz"}`);
         break;
       }
       case "chapters": {
@@ -341,9 +220,7 @@ export const ModuleCard: React.FC<Props> = ({ type, onResult }) => {
       case "resize": {
         const res = payload as AutoResizeResult;
         setResult(
-          `${res.original_resolution} -> ${res.formats.length} format. Subject: ${
-            res.subject_detected ? "bulundu" : "merkez"
-          }`,
+          `${res.original_resolution} → ${res.formats.length} format. Özne: ${res.subject_detected ? "bulundu" : "merkez"}`,
         );
         break;
       }
@@ -355,20 +232,70 @@ export const ModuleCard: React.FC<Props> = ({ type, onResult }) => {
     }
   };
 
+  const handleRun = async () => {
+    if (!source) {
+      setError("Premiere timeline'da medya yolu okunabilen bir klip seç, sonra Yenile'ye bas.");
+      return;
+    }
+    setRunning(true);
+    setProgress(0);
+    setError(null);
+    setResult(null);
+    setApplyMsg(null);
+
+    const unsub = wsService.onMessage((e) => {
+      if (e.event === "progress") setProgress(e.progress ?? 0);
+      if (e.event === "job_done") setProgress(100);
+    });
+
+    try {
+      const data = await runModule(source)!;
+      setModuleResult(data.result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      unsub();
+      setRunning(false);
+    }
+  };
+
+  const handleApply = async () => {
+    setApplyMsg(null);
+    if (!premiereAPI.isAvailable()) {
+      setApplyMsg("Premiere bulunamadı (panel Premiere içinde değil).");
+      return;
+    }
+    if (cuts.length === 0) {
+      setApplyMsg("Uygulanacak kesim yok.");
+      return;
+    }
+    try {
+      await premiereAPI.applyEdits(cuts, clip?.start ?? 0);
+      setApplyMsg(`${cuts.length} kesim aktif sequence'e uygulandı ✓`);
+    } catch (err) {
+      setApplyMsg(`Uygulama hatası: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
+  const canApply = APPLIES_CUTS.includes(type) && cuts.length > 0;
+
   return (
-    <Card style={{ padding: 14 }}>
-      <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 12 }}>
+    <div style={{ padding: 14 }}>
+      <BackButton onClick={onBack} label="Ana sayfa" />
+
+      {/* Tool header */}
+      <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 14 }}>
         <div
           style={{
-            width: 34,
-            height: 34,
-            borderRadius: 8,
+            width: 38,
+            height: 38,
+            borderRadius: 9,
             background: `${meta.accent}22`,
             color: meta.accent,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontSize: 18,
+            fontSize: 20,
             flexShrink: 0,
           }}
         >
@@ -376,7 +303,7 @@ export const ModuleCard: React.FC<Props> = ({ type, onResult }) => {
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ fontSize: 13.5, fontWeight: 800, color: t.text }}>{meta.label}</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: t.text }}>{meta.label}</div>
             <Badge color={meta.accent}>{meta.tag}</Badge>
           </div>
           <div style={{ fontSize: 11.5, color: t.textDim, lineHeight: 1.45, marginTop: 4 }}>
@@ -385,8 +312,20 @@ export const ModuleCard: React.FC<Props> = ({ type, onResult }) => {
         </div>
       </div>
 
-      <Field label="Dosya" hint="Analiz edilecek video veya ses dosyası. Sonuçlar araç tipine göre timeline kesimi, metin veya ayar önerisi üretir.">
-        <FilePicker file={file} onPick={setFile} placeholder="Video / ses dosyası seç..." />
+      <Field
+        label="Kaynak — timeline klibi"
+        hint="Premiere timeline'ında seçili klip üzerinde çalışır. Klibi değiştirdiysen Yenile'ye bas."
+      >
+        <TimelineClipCard
+          clipName={clip?.name}
+          mediaPath={clip?.mediaPath}
+          start={clip?.start}
+          end={clip?.end}
+          sourceIn={clip?.sourceIn}
+          sourceOut={clip?.sourceOut}
+          onRefresh={refresh}
+          refreshing={refreshing}
+        />
       </Field>
 
       {renderControls()}
@@ -396,7 +335,7 @@ export const ModuleCard: React.FC<Props> = ({ type, onResult }) => {
       <Button
         full
         onClick={handleRun}
-        disabled={running}
+        disabled={running || !hasMedia}
         style={{ marginTop: 8, background: running ? t.surface2 : meta.accent }}
       >
         {running ? "İşleniyor..." : "Çalıştır"}
@@ -414,15 +353,23 @@ export const ModuleCard: React.FC<Props> = ({ type, onResult }) => {
             color: t.text,
             lineHeight: 1.45,
             whiteSpace: "pre-wrap",
-            maxHeight: 130,
+            maxHeight: 150,
             overflowY: "auto",
           }}
         >
           {result}
         </div>
       )}
+
+      {canApply && (
+        <Button full onClick={handleApply} style={{ marginTop: 10 }}>
+          Premiere'e Uygula ({cuts.length} kesim)
+        </Button>
+      )}
+
+      {applyMsg && <Banner kind="info">{applyMsg}</Banner>}
       {error && <Banner kind="error">{error}</Banner>}
-    </Card>
+    </div>
   );
 
   function renderControls() {
@@ -514,7 +461,7 @@ export const ModuleCard: React.FC<Props> = ({ type, onResult }) => {
         )}
 
         {type === "captions" && (
-          <Field label="Caption stili" hint="Altyazı bloklarının hedef platforma göre ritmini ve görünüm adını belirler.">
+          <Field label="Caption stili" hint="Altyazı bloklarının hedef platforma göre ritmini belirler.">
             <Select
               value={captionStyle}
               onChange={setCaptionStyle}
@@ -604,7 +551,6 @@ export const ModuleCard: React.FC<Props> = ({ type, onResult }) => {
     if (!["whisper", "captions", "repeat", "profanity", "chapters", "broll"].includes(type)) {
       return null;
     }
-
     return (
       <>
         <Field label="Model" hint="Küçük modeller hızlıdır; büyük modeller daha isabetli transkript üretir.">

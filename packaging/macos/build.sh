@@ -35,6 +35,8 @@ cp packaging/macos/Info.plist "$APP_BUNDLE/Contents/Info.plist"
 cp -R "$DIST/kade-backend/." "$APP_BUNDLE/Contents/MacOS/"
 cp packaging/macos/kade-autoedit-launcher.sh "$APP_BUNDLE/Contents/MacOS/kade-autoedit-launcher"
 chmod +x "$APP_BUNDLE/Contents/MacOS/kade-autoedit-launcher"
+# LaunchAgent template (launcher installs it to ~/Library/LaunchAgents on first run).
+cp packaging/macos/com.kademedia.autoedit.plist "$APP_BUNDLE/Contents/Resources/com.kademedia.autoedit.plist"
 [ -d "$ROOT/panel/dist" ] && cp -R "$ROOT/panel/dist" "$APP_BUNDLE/Contents/Resources/UXPPlugin"
 # Bundle ana yurutulebiliri Info.plist'teki CFBundleExecutable ile eslesir.
 # Launcher once paneli Adobe UXP External klasorune kopyalar, sonra backend'i baslatir.

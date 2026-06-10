@@ -165,6 +165,23 @@ def _prepare_local_media_path(
     return str(out)
 
 
+def _resolve_media_path(
+    source_path: str,
+    source_start: Optional[float],
+    source_end: Optional[float],
+) -> str:
+    """Prepare a local media path (optionally sliced to the timeline in/out).
+
+    Shared by every `*-path` endpoint so the panel can edit the clip that is
+    already on the Premiere timeline instead of re-uploading the file.
+    """
+    try:
+        return _prepare_local_media_path(source_path, source_start, source_end)
+    except subprocess.CalledProcessError as exc:
+        detail = exc.stderr.decode("utf-8", errors="ignore") if isinstance(exc.stderr, bytes) else str(exc)
+        raise HTTPException(status_code=500, detail=f"Cannot prepare timeline media: {detail}")
+
+
 async def _run_job(job_id: str, job_type: str, coro, db: Session):
     """Execute a job coroutine, update DB, and broadcast progress."""
     start_time = time.time()
@@ -718,11 +735,7 @@ async def auto_edit_path(
     except json.JSONDecodeError:
         raise HTTPException(status_code=422, detail="overrides must be valid JSON")
 
-    try:
-        media_path = _prepare_local_media_path(source_path, source_start, source_end)
-    except subprocess.CalledProcessError as exc:
-        detail = exc.stderr.decode("utf-8", errors="ignore") if isinstance(exc.stderr, bytes) else str(exc)
-        raise HTTPException(status_code=500, detail=f"Cannot prepare timeline media: {detail}")
+    media_path = _resolve_media_path(source_path, source_start, source_end)
 
     job = _create_job(db, JobType.AUTO_EDIT.value, media_path)
 
@@ -736,6 +749,347 @@ async def auto_edit_path(
         )
 
     result = await _run_job(job.id, JobType.AUTO_EDIT.value, run, db)
+    return {"job_id": job.id, "result": result}
+
+
+# ── Timeline path variants (no upload — operate on the clip already on the timeline) ──
+#
+# Every module already works from a local media path, so each `*-path` endpoint just
+# resolves the timeline clip's media file (optionally sliced to its in/out points) via
+# `_resolve_media_path` and runs the same module coroutine + job pipeline as its upload
+# twin above. The panel sends `source_path` (+ optional `source_start`/`source_end`).
+
+
+@app.post("/silence-cut-path")
+async def silence_cut_path(
+    source_path: str = Form(...),
+    source_start: Optional[float] = Form(None),
+    source_end: Optional[float] = Form(None),
+    threshold_db: float = Form(settings.SILENCE_THRESHOLD),
+    min_silence_ms: int = Form(500),
+    fade_ms: int = Form(50),
+    keep_padding_ms: int = Form(100),
+    db: Session = Depends(get_db),
+):
+    media_path = _resolve_media_path(source_path, source_start, source_end)
+    job = _create_job(db, JobType.SILENCE_CUT.value, media_path)
+
+    async def run(progress_callback):
+        return await cut_silences(
+            media_path,
+            threshold_db=threshold_db,
+            min_silence_ms=min_silence_ms,
+            fade_ms=fade_ms,
+            keep_padding_ms=keep_padding_ms,
+            progress_callback=progress_callback,
+        )
+
+    result = await _run_job(job.id, JobType.SILENCE_CUT.value, run, db)
+    return {"job_id": job.id, "result": result}
+
+
+@app.post("/transcript-path")
+async def transcript_path(
+    source_path: str = Form(...),
+    source_start: Optional[float] = Form(None),
+    source_end: Optional[float] = Form(None),
+    model_name: str = Form(settings.WHISPER_MODEL),
+    language: str = Form(settings.WHISPER_LANGUAGE),
+    detect_fillers: bool = Form(True),
+    db: Session = Depends(get_db),
+):
+    media_path = _resolve_media_path(source_path, source_start, source_end)
+    job = _create_job(db, JobType.TRANSCRIPT.value, media_path)
+
+    async def run(progress_callback):
+        return await transcribe_audio(
+            media_path,
+            model_name=model_name,
+            language=language,
+            detect_fillers=detect_fillers,
+            progress_callback=progress_callback,
+        )
+
+    result = await _run_job(job.id, JobType.TRANSCRIPT.value, run, db)
+    return {"job_id": job.id, "result": result}
+
+
+@app.post("/beat-sync-path")
+async def beat_sync_path(
+    source_path: str = Form(...),
+    source_start: Optional[float] = Form(None),
+    source_end: Optional[float] = Form(None),
+    sensitivity: float = Form(settings.BEAT_SENSITIVITY),
+    db: Session = Depends(get_db),
+):
+    media_path = _resolve_media_path(source_path, source_start, source_end)
+    job = _create_job(db, JobType.BEAT_SYNC.value, media_path)
+
+    async def run(progress_callback):
+        return await detect_beats(media_path, sensitivity=sensitivity, progress_callback=progress_callback)
+
+    result = await _run_job(job.id, JobType.BEAT_SYNC.value, run, db)
+    return {"job_id": job.id, "result": result}
+
+
+@app.post("/scene-detect-path")
+async def scene_detect_path(
+    source_path: str = Form(...),
+    source_start: Optional[float] = Form(None),
+    source_end: Optional[float] = Form(None),
+    threshold: float = Form(settings.SCENE_THRESHOLD),
+    min_scene_duration: float = Form(1.0),
+    db: Session = Depends(get_db),
+):
+    media_path = _resolve_media_path(source_path, source_start, source_end)
+    job = _create_job(db, JobType.SCENE_DETECT.value, media_path)
+
+    async def run(progress_callback):
+        return await detect_scenes(
+            media_path,
+            threshold=threshold,
+            min_scene_duration=min_scene_duration,
+            progress_callback=progress_callback,
+        )
+
+    result = await _run_job(job.id, JobType.SCENE_DETECT.value, run, db)
+    return {"job_id": job.id, "result": result}
+
+
+@app.post("/auto-color-path")
+async def auto_color_path(
+    source_path: str = Form(...),
+    source_start: Optional[float] = Form(None),
+    source_end: Optional[float] = Form(None),
+    target_lufs: float = Form(settings.TARGET_LUFS),
+    lut_intensity: float = Form(1.0),
+    denoise: bool = Form(False),
+    db: Session = Depends(get_db),
+):
+    media_path = _resolve_media_path(source_path, source_start, source_end)
+    job = _create_job(db, JobType.AUTO_COLOR.value, media_path)
+
+    async def run(progress_callback):
+        return await analyze_color_audio(
+            media_path,
+            target_lufs=target_lufs,
+            lut_intensity=lut_intensity,
+            denoise=denoise,
+            progress_callback=progress_callback,
+        )
+
+    result = await _run_job(job.id, JobType.AUTO_COLOR.value, run, db)
+    return {"job_id": job.id, "result": result}
+
+
+@app.post("/auto-captions-path")
+async def auto_captions_path(
+    source_path: str = Form(...),
+    source_start: Optional[float] = Form(None),
+    source_end: Optional[float] = Form(None),
+    model_name: str = Form(settings.WHISPER_MODEL),
+    language: str = Form(settings.WHISPER_LANGUAGE),
+    style: str = Form("youtube"),
+    db: Session = Depends(get_db),
+):
+    media_path = _resolve_media_path(source_path, source_start, source_end)
+    job = _create_job(db, JobType.AUTO_CAPTIONS.value, media_path)
+
+    async def run(progress_callback):
+        return await generate_captions(media_path, model_name=model_name, language=language, style=style, progress_callback=progress_callback)
+
+    result = await _run_job(job.id, JobType.AUTO_CAPTIONS.value, run, db)
+    return {"job_id": job.id, "result": result}
+
+
+@app.post("/auto-zoom-path")
+async def auto_zoom_path(
+    source_path: str = Form(...),
+    source_start: Optional[float] = Form(None),
+    source_end: Optional[float] = Form(None),
+    min_scale: float = Form(1.15),
+    max_scale: float = Form(1.40),
+    sensitivity: float = Form(0.7),
+    zoom_duration: float = Form(0.3),
+    db: Session = Depends(get_db),
+):
+    media_path = _resolve_media_path(source_path, source_start, source_end)
+    job = _create_job(db, JobType.AUTO_ZOOM.value, media_path)
+
+    async def run(progress_callback):
+        return await detect_zoom_points(media_path, min_scale=min_scale, max_scale=max_scale, sensitivity=sensitivity, zoom_duration=zoom_duration, progress_callback=progress_callback)
+
+    result = await _run_job(job.id, JobType.AUTO_ZOOM.value, run, db)
+    return {"job_id": job.id, "result": result}
+
+
+@app.post("/viral-detect-path")
+async def viral_detect_path(
+    source_path: str = Form(...),
+    source_start: Optional[float] = Form(None),
+    source_end: Optional[float] = Form(None),
+    clip_duration: float = Form(60.0),
+    top_n: int = Form(3),
+    min_duration: float = Form(20.0),
+    db: Session = Depends(get_db),
+):
+    media_path = _resolve_media_path(source_path, source_start, source_end)
+    job = _create_job(db, JobType.VIRAL_DETECT.value, media_path)
+
+    async def run(progress_callback):
+        return await detect_viral_segments(media_path, clip_duration=clip_duration, top_n=top_n, min_duration=min_duration, progress_callback=progress_callback)
+
+    result = await _run_job(job.id, JobType.VIRAL_DETECT.value, run, db)
+    return {"job_id": job.id, "result": result}
+
+
+@app.post("/podcast-mode-path")
+async def podcast_mode_path(
+    source_path: str = Form(...),
+    source_start: Optional[float] = Form(None),
+    source_end: Optional[float] = Form(None),
+    min_segment_duration: float = Form(1.0),
+    db: Session = Depends(get_db),
+):
+    media_path = _resolve_media_path(source_path, source_start, source_end)
+    job = _create_job(db, JobType.PODCAST_MODE.value, media_path)
+
+    async def run(progress_callback):
+        return await detect_speakers(media_path, min_segment_duration=min_segment_duration, progress_callback=progress_callback)
+
+    result = await _run_job(job.id, JobType.PODCAST_MODE.value, run, db)
+    return {"job_id": job.id, "result": result}
+
+
+@app.post("/repeat-detect-path")
+async def repeat_detect_path(
+    source_path: str = Form(...),
+    source_start: Optional[float] = Form(None),
+    source_end: Optional[float] = Form(None),
+    model_name: str = Form(settings.WHISPER_MODEL),
+    language: str = Form(settings.WHISPER_LANGUAGE),
+    similarity_threshold: float = Form(0.65),
+    db: Session = Depends(get_db),
+):
+    media_path = _resolve_media_path(source_path, source_start, source_end)
+    job = _create_job(db, JobType.REPEAT_DETECT.value, media_path)
+
+    async def run(progress_callback):
+        return await detect_repeats(media_path, model_name=model_name, language=language, similarity_threshold=similarity_threshold, progress_callback=progress_callback)
+
+    result = await _run_job(job.id, JobType.REPEAT_DETECT.value, run, db)
+    return {"job_id": job.id, "result": result}
+
+
+@app.post("/profanity-filter-path")
+async def profanity_filter_path(
+    source_path: str = Form(...),
+    source_start: Optional[float] = Form(None),
+    source_end: Optional[float] = Form(None),
+    model_name: str = Form(settings.WHISPER_MODEL),
+    language: str = Form(settings.WHISPER_LANGUAGE),
+    replacement: str = Form("bleep"),
+    db: Session = Depends(get_db),
+):
+    media_path = _resolve_media_path(source_path, source_start, source_end)
+    job = _create_job(db, JobType.PROFANITY_FILTER.value, media_path)
+
+    async def run(progress_callback):
+        return await filter_profanity(media_path, model_name=model_name, language=language, replacement=replacement, progress_callback=progress_callback)
+
+    result = await _run_job(job.id, JobType.PROFANITY_FILTER.value, run, db)
+    return {"job_id": job.id, "result": result}
+
+
+@app.post("/auto-chapters-path")
+async def auto_chapters_path(
+    source_path: str = Form(...),
+    source_start: Optional[float] = Form(None),
+    source_end: Optional[float] = Form(None),
+    model_name: str = Form(settings.WHISPER_MODEL),
+    language: str = Form(settings.WHISPER_LANGUAGE),
+    min_chapter_duration: float = Form(30.0),
+    max_chapters: int = Form(12),
+    db: Session = Depends(get_db),
+):
+    media_path = _resolve_media_path(source_path, source_start, source_end)
+    job = _create_job(db, JobType.AUTO_CHAPTERS.value, media_path)
+
+    async def run(progress_callback):
+        return await generate_chapters(media_path, model_name=model_name, language=language, min_chapter_duration=min_chapter_duration, max_chapters=max_chapters, progress_callback=progress_callback)
+
+    result = await _run_job(job.id, JobType.AUTO_CHAPTERS.value, run, db)
+    return {"job_id": job.id, "result": result}
+
+
+@app.post("/auto-resize-path")
+async def auto_resize_path(
+    source_path: str = Form(...),
+    source_start: Optional[float] = Form(None),
+    source_end: Optional[float] = Form(None),
+    db: Session = Depends(get_db),
+):
+    media_path = _resolve_media_path(source_path, source_start, source_end)
+    job = _create_job(db, JobType.AUTO_RESIZE.value, media_path)
+
+    async def run(progress_callback):
+        return await analyze_resize(media_path, progress_callback=progress_callback)
+
+    result = await _run_job(job.id, JobType.AUTO_RESIZE.value, run, db)
+    return {"job_id": job.id, "result": result}
+
+
+@app.post("/broll-suggest-path")
+async def broll_suggest_path(
+    source_path: str = Form(...),
+    source_start: Optional[float] = Form(None),
+    source_end: Optional[float] = Form(None),
+    model_name: str = Form(settings.WHISPER_MODEL),
+    language: str = Form(settings.WHISPER_LANGUAGE),
+    min_duration: float = Form(2.0),
+    max_suggestions: int = Form(20),
+    db: Session = Depends(get_db),
+):
+    media_path = _resolve_media_path(source_path, source_start, source_end)
+    job = _create_job(db, JobType.BROLL_SUGGEST.value, media_path)
+
+    async def run(progress_callback):
+        return await suggest_broll(media_path, model_name=model_name, language=language, min_duration=min_duration, max_suggestions=max_suggestions, progress_callback=progress_callback)
+
+    result = await _run_job(job.id, JobType.BROLL_SUGGEST.value, run, db)
+    return {"job_id": job.id, "result": result}
+
+
+@app.post("/meme-find-path")
+async def meme_find_path(
+    source_path: str = Form(...),
+    source_start: Optional[float] = Form(None),
+    source_end: Optional[float] = Form(None),
+    text: str = Form(""),
+    model_name: str = Form(settings.WHISPER_MODEL),
+    language: str = Form(settings.WHISPER_LANGUAGE),
+    sources: str = Form("generated,imgflip,tenor,giphy"),
+    max_results: int = Form(12),
+    generate: bool = Form(True),
+    db: Session = Depends(get_db),
+):
+    source_list = [s.strip() for s in sources.split(",") if s.strip()]
+    media_path = _resolve_media_path(source_path, source_start, source_end)
+    job = _create_job(db, JobType.MEME_FIND.value, media_path)
+
+    async def run(progress_callback):
+        return await find_memes(
+            text=text or None,
+            video_path=media_path,
+            model_name=model_name,
+            language=language,
+            sources=source_list,
+            max_results=max_results,
+            generate=generate,
+            progress_callback=progress_callback,
+        )
+
+    result = await _run_job(job.id, JobType.MEME_FIND.value, run, db)
     return {"job_id": job.id, "result": result}
 
 

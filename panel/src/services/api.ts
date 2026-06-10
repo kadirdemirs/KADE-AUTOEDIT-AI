@@ -35,6 +35,29 @@ function uploadRequest(
   return request<{ job_id: string; result: unknown }>("POST", path, fd);
 }
 
+// Timeline-path request: operate on the clip already on the Premiere timeline
+// (its `mediaPath`, optionally sliced to in/out) instead of uploading a file.
+function pathRequest(
+  path: string,
+  sourcePath: string,
+  params: Record<string, unknown> = {},
+  sourceStart?: number | null,
+  sourceEnd?: number | null
+) {
+  const fd = new FormData();
+  fd.append("source_path", sourcePath);
+  Object.entries(params).forEach(([k, v]) => fd.append(k, String(v)));
+  if (sourceStart != null) fd.append("source_start", String(sourceStart));
+  if (sourceEnd != null) fd.append("source_end", String(sourceEnd));
+  return request<{ job_id: string; result: unknown }>("POST", path, fd);
+}
+
+export interface TimelineSource {
+  sourcePath: string;
+  sourceStart?: number | null;
+  sourceEnd?: number | null;
+}
+
 export const api = {
   health: () => request<{ status: string; app: string; version: string }>("GET", "/health"),
 
@@ -74,6 +97,36 @@ export const api = {
   autoResize: (file: File, params: Record<string, unknown>) => uploadRequest("/auto-resize", file, params),
   brollSuggest: (file: File, params: Record<string, unknown>) => uploadRequest("/broll-suggest", file, params),
 
+  // ── Timeline-path variants (default: edit the selected clip, no upload) ─────
+  silenceCutPath: (src: TimelineSource, params: Record<string, unknown>) =>
+    pathRequest("/silence-cut-path", src.sourcePath, params, src.sourceStart, src.sourceEnd),
+  transcriptPath: (src: TimelineSource, params: Record<string, unknown>) =>
+    pathRequest("/transcript-path", src.sourcePath, params, src.sourceStart, src.sourceEnd),
+  beatSyncPath: (src: TimelineSource, params: Record<string, unknown>) =>
+    pathRequest("/beat-sync-path", src.sourcePath, params, src.sourceStart, src.sourceEnd),
+  sceneDetectPath: (src: TimelineSource, params: Record<string, unknown>) =>
+    pathRequest("/scene-detect-path", src.sourcePath, params, src.sourceStart, src.sourceEnd),
+  autoColorPath: (src: TimelineSource, params: Record<string, unknown>) =>
+    pathRequest("/auto-color-path", src.sourcePath, params, src.sourceStart, src.sourceEnd),
+  autoCaptionsPath: (src: TimelineSource, params: Record<string, unknown>) =>
+    pathRequest("/auto-captions-path", src.sourcePath, params, src.sourceStart, src.sourceEnd),
+  autoZoomPath: (src: TimelineSource, params: Record<string, unknown>) =>
+    pathRequest("/auto-zoom-path", src.sourcePath, params, src.sourceStart, src.sourceEnd),
+  viralDetectPath: (src: TimelineSource, params: Record<string, unknown>) =>
+    pathRequest("/viral-detect-path", src.sourcePath, params, src.sourceStart, src.sourceEnd),
+  podcastModePath: (src: TimelineSource, params: Record<string, unknown>) =>
+    pathRequest("/podcast-mode-path", src.sourcePath, params, src.sourceStart, src.sourceEnd),
+  repeatDetectPath: (src: TimelineSource, params: Record<string, unknown>) =>
+    pathRequest("/repeat-detect-path", src.sourcePath, params, src.sourceStart, src.sourceEnd),
+  profanityFilterPath: (src: TimelineSource, params: Record<string, unknown>) =>
+    pathRequest("/profanity-filter-path", src.sourcePath, params, src.sourceStart, src.sourceEnd),
+  autoChaptersPath: (src: TimelineSource, params: Record<string, unknown>) =>
+    pathRequest("/auto-chapters-path", src.sourcePath, params, src.sourceStart, src.sourceEnd),
+  autoResizePath: (src: TimelineSource, params: Record<string, unknown>) =>
+    pathRequest("/auto-resize-path", src.sourcePath, params, src.sourceStart, src.sourceEnd),
+  brollSuggestPath: (src: TimelineSource, params: Record<string, unknown>) =>
+    pathRequest("/broll-suggest-path", src.sourcePath, params, src.sourceStart, src.sourceEnd),
+
   // ── Meme Finder ───────────────────────────────────────────────────────────
   memeFind: (params: {
     text?: string;
@@ -93,6 +146,30 @@ export const api = {
     if (params.model_name) fd.append("model_name", params.model_name);
     if (params.language) fd.append("language", params.language);
     return request<{ job_id: string; result: MemeResult }>("POST", "/meme-find", fd);
+  },
+
+  memeFindPath: (
+    src: TimelineSource,
+    params: {
+      text?: string;
+      sources?: string;
+      max_results?: number;
+      generate?: boolean;
+      model_name?: string;
+      language?: string;
+    } = {}
+  ) => {
+    const fd = new FormData();
+    fd.append("source_path", src.sourcePath);
+    if (src.sourceStart != null) fd.append("source_start", String(src.sourceStart));
+    if (src.sourceEnd != null) fd.append("source_end", String(src.sourceEnd));
+    if (params.text) fd.append("text", params.text);
+    if (params.sources) fd.append("sources", params.sources);
+    if (params.max_results != null) fd.append("max_results", String(params.max_results));
+    if (params.generate != null) fd.append("generate", String(params.generate));
+    if (params.model_name) fd.append("model_name", params.model_name);
+    if (params.language) fd.append("language", params.language);
+    return request<{ job_id: string; result: MemeResult }>("POST", "/meme-find-path", fd);
   },
 
   memeImageUrl: (localPath: string) => `${BASE_URL}/meme-image?path=${encodeURIComponent(localPath)}`,

@@ -5,7 +5,7 @@ import { api } from "../services/api";
 import { wsService } from "../services/websocket";
 import { premiereAPI } from "../services/premiere";
 import { useTheme } from "../theme";
-import { SectionHeader, Field, Select, Toggle, Button, FilePicker, Banner, Chip, Slider } from "./ui";
+import { SectionHeader, Field, Select, Toggle, Button, FilePicker, Banner, Chip, Slider, TimelineClipCard, Accordion, BackButton } from "./ui";
 
 // Icon + extra one-liner per style so each card explains itself (AutoCut style).
 const STYLE_META: Record<string, { icon: string; tag: string }> = {
@@ -58,7 +58,7 @@ const SILENCE_PRESETS = [
   },
 ];
 
-export const AutoEditPanel: React.FC = () => {
+export const AutoEditPanel: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
   const { t } = useTheme();
   const [styles, setStyles] = useState<Style[]>([]);
   const [styleId, setStyleId] = useState("");
@@ -185,6 +185,7 @@ export const AutoEditPanel: React.FC = () => {
 
   return (
     <div style={{ padding: 14 }}>
+      {onBack && <BackButton onClick={onBack} label="Ana sayfa" />}
       <SectionHeader
         icon="⚡"
         title="Auto Edit"
@@ -192,56 +193,39 @@ export const AutoEditPanel: React.FC = () => {
       />
 
       <Field
-        label="1. Kaynak"
-        hint="Normal kullanım: Premiere timeline'da bir klip seç ve 'Timeline'dan Al' de. Dosya seçme sadece Premiere dışı test/fallback içindir."
+        label="1. Kaynak — timeline klibi"
+        hint="Premiere timeline'ında seçili klip üzerinde çalışır. Klibi değiştirdiysen Yenile'ye bas."
       >
-        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-          <Button
-            full
-            variant={sourceMode === "timeline" ? "primary" : "secondary"}
-            onClick={() => {
-              setSourceMode("timeline");
-              refreshTimelineClip();
-            }}
-          >
-            Timeline'dan Al
-          </Button>
-          <Button full variant={sourceMode === "file" ? "primary" : "secondary"} onClick={() => setSourceMode("file")}>
-            Dosya Fallback
-          </Button>
-        </div>
+        <TimelineClipCard
+          clipName={timelineClip?.name}
+          mediaPath={timelineClip?.mediaPath}
+          start={timelineClip?.start}
+          end={timelineClip?.end}
+          sourceIn={timelineClip?.sourceIn}
+          sourceOut={timelineClip?.sourceOut}
+          onRefresh={() => {
+            setSourceMode("timeline");
+            refreshTimelineClip();
+          }}
+        />
 
-        {sourceMode === "timeline" && (
-          <div
-            style={{
-              background: t.surface,
-              border: `1px solid ${timelineClip?.mediaPath ? t.accent : t.border}`,
-              borderRadius: 8,
-              padding: 12,
-            }}
-          >
-            <div style={{ fontSize: 12.5, fontWeight: 800, color: t.text }}>
-              {timelineClip?.name || "Seçili klip yok"}
-            </div>
-            <div style={{ fontSize: 11, color: t.textDim, lineHeight: 1.45, marginTop: 4 }}>
-              {timelineClip?.mediaPath
-                ? `Medya: ${timelineClip.mediaPath}`
-                : "Premiere timeline'da bir klip seç, sonra tekrar Timeline'dan Al'a bas."}
-            </div>
-            {timelineClip && (
-              <div style={{ fontSize: 10.5, color: t.textFaint, marginTop: 6 }}>
-                Timeline: {timelineClip.start.toFixed(1)}s - {timelineClip.end.toFixed(1)}s
-                {timelineClip.sourceIn != null && timelineClip.sourceOut != null
-                  ? ` · Kaynak: ${timelineClip.sourceIn.toFixed(1)}s - ${timelineClip.sourceOut.toFixed(1)}s`
-                  : ""}
-              </div>
-            )}
+        <Accordion title="Gelişmiş — dosyadan test (Premiere dışı)">
+          <div style={{ fontSize: 11, color: t.textDim, lineHeight: 1.45, marginBottom: 8 }}>
+            Sadece Premiere dışı test/fallback için. Dosya seçersen timeline yerine bu dosya
+            kullanılır.
           </div>
-        )}
-
-        {sourceMode === "file" && (
-          <FilePicker file={file} onPick={setFile} placeholder="Video / ses dosyası seç..." />
-        )}
+          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+            <Button full variant={sourceMode === "timeline" ? "primary" : "secondary"} onClick={() => setSourceMode("timeline")}>
+              Timeline kullan
+            </Button>
+            <Button full variant={sourceMode === "file" ? "primary" : "secondary"} onClick={() => setSourceMode("file")}>
+              Dosya kullan
+            </Button>
+          </div>
+          {sourceMode === "file" && (
+            <FilePicker file={file} onPick={setFile} placeholder="Video / ses dosyası seç..." />
+          )}
+        </Accordion>
       </Field>
 
       {/* Step 2 — style cards */}

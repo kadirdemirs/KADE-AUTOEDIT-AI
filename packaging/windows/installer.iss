@@ -34,9 +34,10 @@ Name: "turkish"; MessagesFile: "compiler:Languages\Turkish.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "Masaustu kisayolu olustur"; GroupDescription: "Kisayollar:"
-Name: "autostart"; Description: "Windows baslangicinda sunucuyu otomatik baslat"; GroupDescription: "Secenekler:"; Flags: unchecked
-Name: "openextensions"; Description: "Kurulumdan sonra Adobe Extensions klasorunu ac"; GroupDescription: "Secenekler:"; Flags: checkedonce
+; Autostart ON by default: backend runs in the background on login, so the user
+; never launches a server by hand. The panel also tries to start it on open.
+Name: "autostart"; Description: "Windows baslangicinda KADE servisini otomatik baslat (onerilir)"; GroupDescription: "Secenekler:"
+Name: "desktopicon"; Description: "Masaustu kisayolu olustur"; GroupDescription: "Kisayollar:"; Flags: unchecked
 
 [Files]
 ; PyInstaller onedir ciktisinin tamami
@@ -47,9 +48,10 @@ Source: "..\..\dist\KADE-AutoEdit.ccx"; DestDir: "{app}"; Flags: skipifsourcedoe
 Source: "..\..\panel\dist\*"; DestDir: "{userappdata}\Adobe\UXP\Plugins\External\{#PluginFolder}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
-Name: "{group}\KADE AutoEdit AI Sunucu"; Filename: "{app}\kade-backend.exe"
-Name: "{group}\Panel'i Premiere'e Kur (.ccx)"; Filename: "{app}\KADE-AutoEdit.ccx"; Flags: createonlyiffileexists
-Name: "{group}\Adobe Extensions Klasorunu Ac"; Filename: "{sys}\explorer.exe"; Parameters: """{userappdata}\Adobe\UXP\Plugins\External"""
+; The panel is copied straight into Premiere's UXP plugins folder below, so the
+; only shortcuts the user needs are: start the background service manually if it
+; ever stops, and uninstall. No UXP Developer Tool, no manual .ccx step.
+Name: "{group}\KADE AutoEdit AI Servisi (gerekirse baslat)"; Filename: "{app}\kade-backend.exe"
 Name: "{group}\{cm:UninstallProgram,KADE AutoEdit AI}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\KADE AutoEdit AI"; Filename: "{app}\kade-backend.exe"; Tasks: desktopicon
 
@@ -65,7 +67,7 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
   Tasks: autostart; Flags: uninsdeletevalue
 
 [Run]
-Filename: "{app}\kade-backend.exe"; Description: "Sunucuyu simdi baslat"; \
-  Flags: nowait postinstall skipifsilent
-Filename: "{sys}\explorer.exe"; Parameters: """{userappdata}\Adobe\UXP\Plugins\External"""; \
-  Description: "Adobe Extensions klasorunu ac"; Tasks: openextensions; Flags: postinstall skipifsilent nowait
+; Start the backend right after install so the user can open Premiere and the
+; panel is immediately online — no extra step.
+Filename: "{app}\kade-backend.exe"; Description: "KADE servisini simdi baslat"; \
+  Flags: nowait postinstall

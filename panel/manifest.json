@@ -20,6 +20,10 @@
   "requiredPermissions": {
     "clipboard": "readAndWrite",
     "localFileSystem": "request",
+    "launchProcess": {
+      "schemes": ["file"],
+      "extensions": [".exe", ".app", ".sh"]
+    },
     "network": {
       "domains": ["http://localhost:8472", "ws://localhost:8472"]
     },

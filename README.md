@@ -12,20 +12,25 @@ kade-autoedit-ai/
   packaging/      Installer build (.exe / .dmg / .ccx)
 ```
 
-## Kurulum (son kullanıcı — çift tıkla)
+## Kurulum (son kullanıcı — çift tıkla, AutoCut gibi)
 
-Hazır installer'la Python/FFmpeg bilmenize gerek yok:
+Python/FFmpeg/UXP Developer Tool bilmenize gerek yok. Tek bir installer her şeyi kurar;
+panel Premiere açılışında otomatik gelir, arka plan servisi de otomatik başlar.
 
-1. **Sunucuyu kurun:**
-   - **Windows:** `KADE-AutoEdit-Setup.exe` → çift tıkla. SmartScreen çıkarsa
-     "Daha fazla bilgi" → "Yine de çalıştır" (installer imzasız).
-   - **macOS:** `KADE-AutoEdit.dmg` → aç → `.app`'i Applications'a sürükle. İlk açılışta
-     `.app`'e **sağ tık → Aç** (Gatekeeper, imzasız).
-2. **"KADE AutoEdit AI Sunucu"yu başlatın** (kısayol/uygulama). Arka planda
-   `localhost:8472`'de çalışır.
-3. **Paneli Premiere'e kurun:** installer/dmg ile gelen `KADE-AutoEdit.ccx`'e çift tıklayın
-   (Creative Cloud kurar) ya da Premiere'de `Eklentiler` menüsünden açın.
-4. Premiere'de paneli açın → sağ üstte **"Çevrimiçi"** yazıyorsa hazır.
+1. **Kur:**
+   - **Windows:** `KADE-AutoEdit-Setup.exe` → çift tıkla → İleri. SmartScreen çıkarsa
+     "Daha fazla bilgi" → "Yine de çalıştır" (installer imzasız). Kurulum:
+     - Premiere eklentisini doğru klasöre kopyalar (UXP Developer Tool gerekmez),
+     - arka plan servisini Windows başlangıcına ekler (otomatik başlar),
+     - kurulum biter bitmez servisi başlatır.
+   - **macOS:** `KADE-AutoEdit.dmg` → aç → `.app`'i Applications'a sürükle → bir kez aç.
+     İlk açılışta `.app`'e **sağ tık → Aç** (Gatekeeper, imzasız). İlk açılış paneli kurar
+     ve servisi her oturum açılışında başlayacak şekilde kaydeder (LaunchAgent).
+2. **Premiere'i aç → `Window > UXP Plugins > KADE AutoEdit`** ile paneli aç.
+3. Sağ üstte **"Çevrimiçi"** görünüyorsa hazır. (Servis kapalıysa panel açılınca onu
+   sessizce başlatmayı dener; birkaç saniye sürebilir.)
+
+Artık elle sunucu başlatmak, `.bat` çalıştırmak veya UXP Developer Tool kullanmak **yok**.
 
 > Installer'ları kendiniz build etmek için: [packaging/README.md](packaging/README.md).
 
@@ -115,22 +120,35 @@ npm run build
 
 2. Paneli derleyin (yukarıdaki "Panel" adımı).
 
-3. Adobe UXP Developer Tool'u açın.
+3. **Geliştirme modunda** paneli yüklemek için Adobe UXP Developer Tool kullanılır
+   (`Add Plugin` → `panel/manifest.json` → `Load`). **Son kullanıcı bunu yapmaz** —
+   installer paneli kalıcı kopyalar.
 
-4. `Add Plugin` ile `panel/manifest.json` dosyasını seçin.
+4. Premiere Pro'yu açın → `Window > UXP Plugins > KADE AutoEdit`.
 
-5. Premiere Pro'yu açın.
-
-6. UXP Developer Tool'dan KADE AutoEdit AI pluginini `Load` edin.
-
-7. **Auto Edit** sekmesinde bir dosya + stil seçip tek tuşla tam edit çıkarın,
-   veya **Moduller** sekmesinden tek tek modül çalıştırın.
+5. Açılışta **Ana sayfa**da araç kartları görünür (AutoCut tarzı). Premiere
+   timeline'ında bir klip seçin; her araç o klip üzerinde çalışır — dosya yüklemezsiniz.
 
 ## Kullanim Mantigi
 
+### Ana sayfa + araç kartları (AutoCut tarzı)
+
+Panel açılınca **homepage**'de araç kartları çıkar: tek tuş **Auto Edit**, 10 ana araç
+(Sessizlik, Captions, Zoom, Viral, Podcast, B-Roll, Tekrar, Küfür, Chapters, Resize),
+**Meme Bulucu** ve altta "Gelişmiş Araçlar" (Beat, Sahne, Renk, Transkript). Karta
+tıkla → o aracın sayfası açılır → "← Ana sayfa" ile dön. Üst köşede Library / Preset /
+Kuyruk / Ayarlar küçük ikonları.
+
+### Kaynak: timeline klibi (dosya yükleme yok)
+
+Her araç, Premiere **timeline'ında seçili klip** üzerinde çalışır. Sayfanın üstündeki
+klip kartı hangi klibin işleneceğini gösterir; klibi değiştirirsen **↻ Yenile**'ye bas.
+Klip in/out noktaları varsa backend yalnızca o aralığı işler. (Dosyadan test sadece
+Auto Edit'te "Gelişmiş" altında gizli bir fallback olarak durur.)
+
 ### Auto Edit (tek tuş — AutoCut / spunkram tarzı)
 
-`Auto Edit` sekmesinde bir **stil** seçersin (Talking Head, Viral Short, Beat
+`Auto Edit` kartında bir **stil** seçersin (Talking Head, Viral Short, Beat
 Montage, Podcast, Cinematic), tek tuşa basarsın; backend doğru modülleri doğru
 sırayla zincirler ve tek bir **EditPlan** üretir: atılacak boşluklar, dinamik
 zoom'lar, kelime-kelime animasyonlu altyazılar, b-roll/bölüm markerları.
@@ -180,6 +198,8 @@ FFmpeg yolu gerekirse `FFMPEG_PATH` / `FFPROBE_PATH` ile override edilebilir.
 | GET | /health | Sunucu durumu |
 | GET | /styles | Auto Edit stilleri |
 | POST | /auto-edit | Tek tuş orkestratör (stil → EditPlan, ops. render) |
+| POST | /auto-edit-path | Auto edit — timeline klibi yolundan (yükleme yok) |
+| POST | /{modül}-path | Her modülün timeline-path varyantı (ör. /silence-cut-path) |
 | GET | /render/{job_id} | Render edilen MP4'ü indir |
 | POST | /meme-find | Yazı/konu veya transkriptten meme bul & üret (TR/EN) |
 | GET | /meme-image | Üretilen meme PNG'sini servis et |

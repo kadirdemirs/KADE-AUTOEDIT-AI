@@ -424,6 +424,124 @@ export const EmptyState: React.FC<{
   );
 };
 
+// ── Timeline clip card (the AutoCut "what are we editing" strip) ─────────────
+// Shows the clip currently selected on the Premiere timeline + a refresh button.
+// This replaces file upload everywhere — tools operate on this clip.
+
+export const TimelineClipCard: React.FC<{
+  clipName?: string | null;
+  mediaPath?: string | null;
+  start?: number;
+  end?: number;
+  sourceIn?: number | null;
+  sourceOut?: number | null;
+  onRefresh: () => void;
+  refreshing?: boolean;
+}> = ({ clipName, mediaPath, start, end, sourceIn, sourceOut, onRefresh, refreshing }) => {
+  const { t } = useTheme();
+  const hasMedia = !!mediaPath;
+  return (
+    <div
+      style={{
+        background: t.surface,
+        border: `1px solid ${hasMedia ? t.accent : t.border}`,
+        borderRadius: 8,
+        padding: 12,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 15 }}>{hasMedia ? "🎬" : "⏳"}</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 800, color: t.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {clipName || "Seçili klip yok"}
+          </div>
+        </div>
+        <Button variant="secondary" onClick={onRefresh} style={{ padding: "6px 10px", fontSize: 11 }}>
+          {refreshing ? "..." : "↻ Yenile"}
+        </Button>
+      </div>
+      <div style={{ fontSize: 11, color: t.textDim, lineHeight: 1.45, marginTop: 6 }}>
+        {hasMedia
+          ? `Medya: ${mediaPath}`
+          : "Premiere timeline'da bir klip seç, sonra Yenile'ye bas."}
+      </div>
+      {hasMedia && start != null && end != null && (
+        <div style={{ fontSize: 10.5, color: t.textFaint, marginTop: 4 }}>
+          Timeline: {start.toFixed(1)}s - {end.toFixed(1)}s
+          {sourceIn != null && sourceOut != null
+            ? ` · Kaynak: ${sourceIn.toFixed(1)}s - ${sourceOut.toFixed(1)}s`
+            : ""}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Collapsible "Advanced" section ───────────────────────────────────────────
+
+export const Accordion: React.FC<{
+  title: string;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+}> = ({ title, children, defaultOpen }) => {
+  const { t } = useTheme();
+  const [open, setOpen] = React.useState(!!defaultOpen);
+  return (
+    <div style={{ marginTop: 12, marginBottom: 12 }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          width: "100%",
+          textAlign: "left",
+          background: t.surface2,
+          border: `1px solid ${t.border}`,
+          borderRadius: 8,
+          padding: "9px 12px",
+          fontSize: 12,
+          fontWeight: 700,
+          color: t.textDim,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+        }}
+      >
+        <span style={{ fontSize: 11 }}>{open ? "▼" : "▶"}</span>
+        {title}
+      </button>
+      {open && <div style={{ paddingTop: 12 }}>{children}</div>}
+    </div>
+  );
+};
+
+// ── Back button (homepage navigation) ────────────────────────────────────────
+
+export const BackButton: React.FC<{ onClick: () => void; label?: string }> = ({ onClick, label }) => {
+  const { t } = useTheme();
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        background: "transparent",
+        border: "none",
+        color: t.accent,
+        fontSize: 13,
+        fontWeight: 700,
+        cursor: "pointer",
+        padding: "4px 0",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        marginBottom: 8,
+      }}
+    >
+      ← {label || "Geri"}
+    </button>
+  );
+};
+
 // ── Inline status banners ────────────────────────────────────────────────────
 
 export const Banner: React.FC<{ kind: "error" | "info" | "success"; children: React.ReactNode }> = ({

@@ -14,4 +14,15 @@ if [ -f "$PLUGIN_SRC/manifest.json" ]; then
   cp -R "$PLUGIN_SRC/." "$PLUGIN_DEST/"
 fi
 
-exec "$APP_DIR/MacOS/kade-backend"
+# Register a LaunchAgent so the backend autostarts on every login (no manual server).
+BACKEND_BIN="$APP_DIR/MacOS/kade-backend"
+AGENT_SRC="$APP_DIR/Resources/com.kademedia.autoedit.plist"
+AGENT_DEST="$HOME/Library/LaunchAgents/com.kademedia.autoedit.plist"
+if [ -f "$AGENT_SRC" ]; then
+  mkdir -p "$HOME/Library/LaunchAgents"
+  sed "s|__BACKEND_PATH__|$BACKEND_BIN|g" "$AGENT_SRC" > "$AGENT_DEST"
+  launchctl unload "$AGENT_DEST" 2>/dev/null || true
+  launchctl load "$AGENT_DEST" 2>/dev/null || true
+fi
+
+exec "$BACKEND_BIN"
