@@ -8,7 +8,6 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { Home, HomeTarget } from "./components/Home";
 import { ToolView } from "./components/ToolView";
 import { ModuleType } from "./components/moduleMeta";
-import { useWebSocket } from "./hooks/useWebSocket";
 import { useTimelineClip } from "./hooks/useTimelineClip";
 import { api } from "./services/api";
 import { ensureBackendRunning } from "./services/backendLauncher";
@@ -47,27 +46,36 @@ export const App: React.FC = () => {
   const [view, setView] = useState<View>("home");
   const [online, setOnline] = useState(false);
   const [starting, setStarting] = useState(true);
-  const { isConnected } = useWebSocket();
   const timeline = useTimelineClip();
 
   // On mount: make sure the backend is running (auto-start), then poll health.
+  // Everything is best-effort and isolated so a failure never blanks the panel.
   useEffect(() => {
     let cancelled = false;
+
+    const probe = async () => {
+      try {
+        const res = await api.health();
+        return res?.status === "ok";
+      } catch {
+        return false;
+      }
+    };
+
     (async () => {
-      const ok = await ensureBackendRunning();
-      if (!cancelled) {
-        setOnline(ok);
-        setStarting(false);
+      try {
+        const ok = await ensureBackendRunning();
+        if (!cancelled) setOnline(ok);
+      } catch {
+        if (!cancelled) setOnline(false);
+      } finally {
+        if (!cancelled) setStarting(false);
       }
     })();
 
     const interval = setInterval(async () => {
-      try {
-        const res = await api.health();
-        if (!cancelled) setOnline(res.status === "ok");
-      } catch {
-        if (!cancelled) setOnline(false);
-      }
+      const ok = await probe();
+      if (!cancelled) setOnline(ok);
     }, 5000);
 
     return () => {
@@ -76,7 +84,6 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  const isUp = online && isConnected;
   const goHome = () => setView("home");
 
   return (
@@ -86,6 +93,7 @@ export const App: React.FC = () => {
         flexDirection: "column",
         flex: 1,
         minHeight: 0,
+        height: "100%",
         background: t.bg,
         color: t.text,
         fontFamily: "Inter, Segoe UI, Arial, sans-serif",
@@ -139,9 +147,9 @@ export const App: React.FC = () => {
           >
             {t.name === "dark" ? "☀️" : "🌙"}
           </Button>
-          <Badge color={isUp ? t.good : t.bad} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: isUp ? t.good : t.bad, display: "inline-block" }} />
-            {isUp ? "Çevrimiçi" : starting ? "Başlatılıyor…" : "Çevrimdışı"}
+          <Badge color={online ? t.good : t.bad} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: online ? t.good : t.bad, display: "inline-block" }} />
+            {online ? "Çevrimiçi" : starting ? "Başlatılıyor…" : "Çevrimdışı"}
           </Badge>
         </div>
       </div>
@@ -188,7 +196,7 @@ export const App: React.FC = () => {
       </div>
 
       {/* Offline helper */}
-      {!isUp && !starting && (
+      {!online && !starting && (
         <div
           style={{
             background: "rgba(255,176,32,0.12)",
@@ -199,8 +207,8 @@ export const App: React.FC = () => {
             lineHeight: 1.5,
           }}
         >
-          ⚠️ Sunucuya bağlanılamıyor. KADE arka plan servisinin kurulu ve açık olduğundan emin
-          olun (kurulumdan sonra otomatik başlar). <b>Ayarlar</b>'dan tekrar deneyebilirsiniz.
+          ⚠️ Arka plan servisine bağlanılamıyor. Kurulumdan sonra otomatik başlar;
+          başlamadıysa Başlat menüsünden "KADE AutoEdit AI Servisi"ni açın.
         </div>
       )}
 
