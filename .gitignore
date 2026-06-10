@@ -2,12 +2,20 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 
+backend/.venv/
+backend/venv/
 backend/kade_autoedit.db
 backend/output/
 backend/temp/
 
 panel/node_modules/
 panel/dist/
+
+# Installer build cikti/araclari
+/dist/
+/build/
+packaging/bin/
+*.spec.bak
 
 server.log
 server.err

@@ -2,20 +2,8 @@ import React, { useState } from "react";
 import { Clip, CutPoint } from "../types";
 import { usePremiereAPI } from "../hooks/usePremiereAPI";
 import { premiereAPI } from "../services/premiere";
-
-const s: Record<string, React.CSSProperties> = {
-  container: { padding: 12 },
-  header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
-  title: { fontWeight: 600, fontSize: 13, color: "#e0e0e0" },
-  badge: { fontSize: 10, background: "#333", padding: "2px 6px", borderRadius: 10, color: "#aaa" },
-  refreshBtn: { fontSize: 11, background: "#2a2a2a", border: "1px solid #444", color: "#ccc", padding: "3px 8px", borderRadius: 4, cursor: "pointer" },
-  clip: { display: "flex", alignItems: "center", padding: "6px 8px", background: "#222", borderRadius: 4, marginBottom: 4, cursor: "pointer" },
-  clipSelected: { borderLeft: "3px solid #4a9eff" },
-  clipName: { flex: 1, fontSize: 12, color: "#ddd", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  clipTime: { fontSize: 10, color: "#888", marginLeft: 8, flexShrink: 0 },
-  empty: { color: "#666", fontSize: 12, textAlign: "center", padding: 24 },
-  applyBtn: { width: "100%", padding: "7px 0", background: "#4a9eff", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontSize: 12, fontWeight: 600, marginTop: 10 },
-};
+import { useTheme } from "../theme";
+import { Badge, Banner, Button, Card, EmptyState, SectionHeader } from "./ui";
 
 function fmtTime(sec: number): string {
   const m = Math.floor(sec / 60);
@@ -28,72 +16,145 @@ interface Props {
 }
 
 export const TimelineViewer: React.FC<Props> = ({ pendingCuts }) => {
+  const { t } = useTheme();
   const { selectedClips, sequenceName, refreshClips, isAvailable } = usePremiereAPI();
   const [applying, setApplying] = useState(false);
+  const [message, setMessage] = useState<{ kind: "info" | "error"; text: string } | null>(null);
 
   const handleApply = async () => {
     if (!pendingCuts?.length) return;
     setApplying(true);
+    setMessage(null);
     try {
       await premiereAPI.applyEdits(pendingCuts);
+      setMessage({ kind: "info", text: "Bekleyen kesimler Premiere timeline'a uygulandı." });
+    } catch (err) {
+      setMessage({ kind: "error", text: err instanceof Error ? err.message : String(err) });
     } finally {
       setApplying(false);
     }
   };
 
   return (
-    <div style={s.container}>
-      <div style={s.header}>
-        <div>
-          <div style={s.title}>Timeline</div>
-          {sequenceName && <div style={{ fontSize: 10, color: "#888", marginTop: 2 }}>{sequenceName}</div>}
-        </div>
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <span style={s.badge}>{selectedClips.length} clip</span>
-          <button style={s.refreshBtn} onClick={refreshClips}>Refresh</button>
-        </div>
+    <div style={{ padding: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+        <SectionHeader
+          icon="🎞️"
+          title="Timeline"
+          subtitle={
+            sequenceName
+              ? `Aktif sequence: ${sequenceName}`
+              : "Premiere seçimini ve araçlardan gelen kesim önerilerini burada gör."
+          }
+        />
+        <Button variant="secondary" onClick={refreshClips} style={{ padding: "8px 10px", flexShrink: 0 }}>
+          Yenile
+        </Button>
       </div>
 
       {!isAvailable && (
-        <div style={{ ...s.empty, color: "#f5a623" }}>
-          Premiere Pro baglantisi yok.<br />Panel icinden calistirin.
-        </div>
+        <EmptyState
+          icon="⚠️"
+          title="Premiere bağlantısı yok"
+          hint="Paneli Premiere Pro içinden açınca aktif sequence ve seçili klipler burada görünür."
+        />
       )}
 
       {isAvailable && selectedClips.length === 0 && (
-        <div style={s.empty}>Secili clip yok.<br />Premiere'de clip secin.</div>
+        <EmptyState
+          icon="🎬"
+          title="Seçili klip yok"
+          hint="Premiere timeline'da bir veya daha fazla klip seçip yenileyebilirsin."
+        />
       )}
 
-      {selectedClips.map((clip: Clip) => (
-        <div key={clip.id} style={{ ...s.clip, ...(clip.selected ? s.clipSelected : {}) }}>
-          <div style={s.clipName}>{clip.name}</div>
-          <div style={s.clipTime}>
-            {fmtTime(clip.start)} – {fmtTime(clip.end)}
+      {isAvailable && selectedClips.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: t.text }}>Seçili klipler</div>
+            <Badge>{selectedClips.length} clip</Badge>
           </div>
+          {selectedClips.map((clip: Clip) => (
+            <Card key={clip.id} active={clip.selected} style={{ padding: "10px 12px", marginBottom: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div
+                  style={{
+                    width: 8,
+                    height: 34,
+                    borderRadius: 999,
+                    background: clip.selected ? t.accent : t.border,
+                    flexShrink: 0,
+                  }}
+                />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 12.5,
+                      fontWeight: 700,
+                      color: t.text,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {clip.name}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: t.textFaint, marginTop: 2 }}>
+                    {fmtTime(clip.start)} - {fmtTime(clip.end)}
+                  </div>
+                </div>
+              </div>
+            </Card>
+          ))}
         </div>
-      ))}
+      )}
 
       {pendingCuts && pendingCuts.length > 0 && (
-        <div>
-          <div style={{ fontSize: 11, color: "#aaa", marginTop: 10, marginBottom: 4 }}>
-            Bekleyen kesimler: {pendingCuts.length}
+        <div style={{ marginTop: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: t.text }}>Bekleyen kesimler</div>
+            <Badge color={t.warn}>{pendingCuts.length} öneri</Badge>
           </div>
-          {pendingCuts.slice(0, 5).map((cp, i) => (
-            <div key={i} style={{ ...s.clip, borderLeft: `3px solid ${cp.type === "filler" ? "#f5a623" : "#4a9eff"}` }}>
-              <div style={s.clipName}>{cp.label ?? cp.type}</div>
-              <div style={s.clipTime}>{fmtTime(cp.start)} – {fmtTime(cp.end)}</div>
-            </div>
-          ))}
+
+          {pendingCuts.slice(0, 5).map((cp, i) => {
+            const cutColor = cp.type === "filler" ? t.warn : t.accent;
+            return (
+              <Card key={`${cp.start}-${cp.end}-${i}`} style={{ padding: "10px 12px", marginBottom: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div
+                    style={{
+                      width: 8,
+                      height: 34,
+                      borderRadius: 999,
+                      background: cutColor,
+                      flexShrink: 0,
+                    }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: t.text }}>{cp.label ?? cp.type}</div>
+                    <div style={{ fontSize: 10.5, color: t.textFaint, marginTop: 2 }}>
+                      {fmtTime(cp.start)} - {fmtTime(cp.end)}
+                    </div>
+                  </div>
+                  <Badge color={cutColor}>{cp.type}</Badge>
+                </div>
+              </Card>
+            );
+          })}
+
           {pendingCuts.length > 5 && (
-            <div style={{ fontSize: 10, color: "#666", textAlign: "center" }}>
-              +{pendingCuts.length - 5} daha
+            <div style={{ fontSize: 10.5, color: t.textFaint, textAlign: "center", margin: "6px 0 10px" }}>
+              +{pendingCuts.length - 5} öneri daha
             </div>
           )}
-          <button style={s.applyBtn} onClick={handleApply} disabled={applying}>
+
+          <Button full onClick={handleApply} disabled={applying}>
             {applying ? "Uygulanıyor..." : "Premiere'e Uygula"}
-          </button>
+          </Button>
         </div>
       )}
+
+      {message && <Banner kind={message.kind}>{message.text}</Banner>}
     </div>
   );
 };

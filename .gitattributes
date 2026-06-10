@@ -1,0 +1,9 @@
+# Shell scriptleri her zaman LF — macOS/Linux'ta CRLF "bad interpreter" hatasi verir.
+*.sh text eol=lf
+
+# Windows batch dosyalari her zaman CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Diger metin dosyalari icin satir sonunu git otomatik yonetsin.
+* text=auto

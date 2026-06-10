@@ -1,24 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../services/api";
-
-const s: Record<string, React.CSSProperties> = {
-  container: { padding: 12 },
-  section: { marginBottom: 16 },
-  heading: { fontWeight: 600, fontSize: 12, color: "#aaa", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 },
-  label: { fontSize: 11, color: "#aaa", display: "block", marginBottom: 4 },
-  input: { width: "100%", padding: "5px 8px", background: "#333", border: "1px solid #444", color: "#eee", borderRadius: 4, fontSize: 12, marginBottom: 8 },
-  statusRow: { display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "#1e1e1e", borderRadius: 6 },
-  statusText: { fontSize: 12, color: "#ccc" },
-  versionText: { fontSize: 10, color: "#555", marginTop: 16, textAlign: "center" },
-};
-
-const dotStyle = (online: boolean): React.CSSProperties => ({
-  width: 8, height: 8, borderRadius: "50%",
-  background: online ? "#4caf50" : "#f44336",
-  flexShrink: 0,
-});
+import { useTheme } from "../theme";
+import { Badge, Card, Field, SectionHeader, Select, TextInput } from "./ui";
 
 export const SettingsPanel: React.FC = () => {
+  const { t } = useTheme();
   const [backendUrl, setBackendUrl] = useState("http://localhost:8472");
   const [whisperModel, setWhisperModel] = useState("base");
   const [online, setOnline] = useState(false);
@@ -40,43 +26,63 @@ export const SettingsPanel: React.FC = () => {
   }, []);
 
   return (
-    <div style={s.container}>
-      <div style={s.section}>
-        <div style={s.heading}>Backend Bağlantısı</div>
-        <div style={s.statusRow}>
-          <div style={dotStyle(online)} />
-          <span style={s.statusText}>
-            {online ? `Bağlı — ${backendUrl}` : "Bağlanamıyor"}
-          </span>
+    <div style={{ padding: 14 }}>
+      <SectionHeader
+        icon="⚙️"
+        title="Ayarlar"
+        subtitle="Backend bağlantısını izle ve panelde kullanılacak varsayılan tercihleri ayarla."
+      />
+
+      <Card>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+            <span
+              style={{
+                width: 10,
+                height: 10,
+                borderRadius: "50%",
+                background: online ? t.good : t.bad,
+                flexShrink: 0,
+              }}
+            />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: t.text }}>Backend Bağlantısı</div>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: t.textDim,
+                  marginTop: 3,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {online ? backendUrl : "Bağlanamıyor"}
+              </div>
+            </div>
+          </div>
+          <Badge color={online ? t.good : t.bad}>{online ? "Bağlı" : "Kapalı"}</Badge>
         </div>
-      </div>
+      </Card>
 
-      <div style={s.section}>
-        <div style={s.heading}>Backend URL</div>
-        <label style={s.label}>API Adresi</label>
-        <input
-          style={s.input}
-          value={backendUrl}
-          onChange={(e) => setBackendUrl(e.target.value)}
-          placeholder="http://localhost:8472"
-        />
-      </div>
-
-      <div style={s.section}>
-        <div style={s.heading}>Varsayılan Ayarlar</div>
-        <label style={s.label}>Whisper Model</label>
-        <select
-          style={s.input}
-          value={whisperModel}
-          onChange={(e) => setWhisperModel(e.target.value)}
+      <Card>
+        <Field
+          label="Backend URL"
+          hint="Panel şu an yerel backend'e istek atar; paketli kullanımda bu adresin açık olması gerekir."
         >
-          {["tiny", "base", "small", "medium", "large"].map((m) => (
-            <option key={m} value={m}>{m}</option>
-          ))}
-        </select>
-      </div>
+          <TextInput value={backendUrl} onChange={setBackendUrl} placeholder="http://localhost:8472" />
+        </Field>
 
-      <div style={s.versionText}>
+        <Field label="Varsayılan Whisper modeli" hint="Transkript tabanlı araçlarda başlangıç modeli olarak kullanılır.">
+          <Select
+            value={whisperModel}
+            onChange={setWhisperModel}
+            options={["tiny", "base", "small", "medium", "large"].map((m) => ({ value: m, label: m }))}
+          />
+        </Field>
+      </Card>
+
+      <div style={{ fontSize: 10.5, color: t.textFaint, marginTop: 16, textAlign: "center" }}>
         KADE AutoEdit AI v1.0.0
         {serverVersion && ` · Backend ${serverVersion}`}
       </div>

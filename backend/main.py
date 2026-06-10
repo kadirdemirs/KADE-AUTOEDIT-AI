@@ -1,7 +1,10 @@
 import json
+import os
+import subprocess
 import time
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import List, Optional
 
 import uvicorn
@@ -9,6 +12,7 @@ from fastapi import (
     Depends, FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 )
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from config import settings
@@ -29,6 +33,10 @@ from modules.profanity_filter import filter_profanity
 from modules.auto_chapters import generate_chapters
 from modules.auto_resize import analyze_resize
 from modules.broll_suggest import suggest_broll
+from modules.auto_edit import run_auto_edit
+from modules.asset_library import list_assets, list_categories
+from modules.meme_finder import find_memes
+from styles import list_styles
 from utils.ffmpeg_utils import get_video_info
 from utils.file_utils import get_temp_path
 
@@ -100,6 +108,61 @@ def _create_job(db: Session, job_type: str, input_file: str = None) -> JobDB:
     db.commit()
     db.refresh(job)
     return job
+
+
+def _prepare_local_media_path(
+    source_path: str,
+    source_start: Optional[float] = None,
+    source_end: Optional[float] = None,
+) -> str:
+    path = Path(source_path).expanduser().resolve()
+    if not path.exists() or not path.is_file():
+        raise HTTPException(status_code=422, detail=f"Media file not found: {source_path}")
+
+    if source_start is None or source_end is None or source_end <= source_start:
+        return str(path)
+
+    duration = source_end - source_start
+    if duration <= 0.05:
+        return str(path)
+
+    out = get_temp_path(suffix=f"_{path.stem}_timeline_slice{path.suffix}")
+    cmd = [
+        settings.FFMPEG_PATH,
+        "-y",
+        "-ss",
+        str(max(0.0, source_start)),
+        "-i",
+        str(path),
+        "-t",
+        str(duration),
+        "-c",
+        "copy",
+        str(out),
+    ]
+    try:
+        subprocess.run(cmd, capture_output=True, check=True)
+    except subprocess.CalledProcessError:
+        # Stream-copy can fail on some codecs/cut points; fall back to a safe transcode.
+        cmd = [
+            settings.FFMPEG_PATH,
+            "-y",
+            "-ss",
+            str(max(0.0, source_start)),
+            "-i",
+            str(path),
+            "-t",
+            str(duration),
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-c:a",
+            "aac",
+            str(out),
+        ]
+        subprocess.run(cmd, capture_output=True, check=True)
+    return str(out)
 
 
 async def _run_job(job_id: str, job_type: str, coro, db: Session):
@@ -529,6 +592,172 @@ async def broll_suggest(
         return await suggest_broll(tmp_path, model_name=model_name, language=language, min_duration=min_duration, max_suggestions=max_suggestions, progress_callback=progress_callback)
     result = await _run_job(job.id, JobType.BROLL_SUGGEST.value, run, db)
     return {"job_id": job.id, "result": result}
+
+
+# ── Meme Finder ───────────────────────────────────────────────────────────────
+
+@app.post("/meme-find")
+async def meme_find(
+    file: Optional[UploadFile] = File(None),
+    text: str = Form(""),
+    model_name: str = Form(settings.WHISPER_MODEL),
+    language: str = Form(settings.WHISPER_LANGUAGE),
+    sources: str = Form("generated,imgflip,tenor,giphy"),
+    max_results: int = Form(12),
+    generate: bool = Form(True),
+    db: Session = Depends(get_db),
+):
+    source_list = [s.strip() for s in sources.split(",") if s.strip()]
+
+    video_path = None
+    if file is not None:
+        video_path = get_temp_path(suffix=f"_{file.filename}")
+        content = await file.read()
+        with open(video_path, "wb") as f:
+            f.write(content)
+    elif not text.strip():
+        raise HTTPException(status_code=422, detail="Bir yazı girin ya da video yükleyin.")
+
+    job = _create_job(db, JobType.MEME_FIND.value, video_path)
+
+    async def run(progress_callback):
+        return await find_memes(
+            text=text or None,
+            video_path=video_path,
+            model_name=model_name,
+            language=language,
+            sources=source_list,
+            max_results=max_results,
+            generate=generate,
+            progress_callback=progress_callback,
+        )
+
+    result = await _run_job(job.id, JobType.MEME_FIND.value, run, db)
+    return {"job_id": job.id, "result": result}
+
+
+@app.get("/meme-image")
+async def meme_image(path: str):
+    """Serve a locally generated meme PNG. Restricted to the memes output dir."""
+    memes_dir = (settings.OUTPUT_DIR / "memes").resolve()
+    target = Path(path).resolve()
+    if memes_dir not in target.parents or not target.exists():
+        raise HTTPException(status_code=404, detail="Meme not found")
+    return FileResponse(str(target), media_type="image/png")
+
+
+# ── Styles ────────────────────────────────────────────────────────────────────
+
+@app.get("/styles")
+async def get_styles():
+    return list_styles()
+
+
+# ── Asset Library ─────────────────────────────────────────────────────────────
+
+@app.get("/library/categories")
+async def library_categories():
+    return list_categories()
+
+
+@app.get("/library/assets")
+async def library_assets(
+    category: str = "all",
+    q: str = "",
+):
+    return list_assets(category=category, query=q)
+
+
+# ── Auto Edit (orchestrator) ──────────────────────────────────────────────────
+
+@app.post("/auto-edit")
+async def auto_edit(
+    file: UploadFile = File(...),
+    style_id: str = Form(...),
+    overrides: str = Form("{}"),
+    render: bool = Form(False),
+    db: Session = Depends(get_db),
+):
+    try:
+        override_dict = json.loads(overrides) if overrides else {}
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=422, detail="overrides must be valid JSON")
+
+    tmp_path = get_temp_path(suffix=f"_{file.filename}")
+    content = await file.read()
+    with open(tmp_path, "wb") as f:
+        f.write(content)
+
+    job = _create_job(db, JobType.AUTO_EDIT.value, tmp_path)
+
+    async def run(progress_callback):
+        return await run_auto_edit(
+            tmp_path,
+            style_id=style_id,
+            overrides=override_dict,
+            render=render,
+            progress_callback=progress_callback,
+        )
+
+    result = await _run_job(job.id, JobType.AUTO_EDIT.value, run, db)
+    return {"job_id": job.id, "result": result}
+
+
+@app.post("/auto-edit-path")
+async def auto_edit_path(
+    source_path: str = Form(...),
+    style_id: str = Form(...),
+    overrides: str = Form("{}"),
+    render: bool = Form(False),
+    source_start: Optional[float] = Form(None),
+    source_end: Optional[float] = Form(None),
+    db: Session = Depends(get_db),
+):
+    try:
+        override_dict = json.loads(overrides) if overrides else {}
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=422, detail="overrides must be valid JSON")
+
+    try:
+        media_path = _prepare_local_media_path(source_path, source_start, source_end)
+    except subprocess.CalledProcessError as exc:
+        detail = exc.stderr.decode("utf-8", errors="ignore") if isinstance(exc.stderr, bytes) else str(exc)
+        raise HTTPException(status_code=500, detail=f"Cannot prepare timeline media: {detail}")
+
+    job = _create_job(db, JobType.AUTO_EDIT.value, media_path)
+
+    async def run(progress_callback):
+        return await run_auto_edit(
+            media_path,
+            style_id=style_id,
+            overrides=override_dict,
+            render=render,
+            progress_callback=progress_callback,
+        )
+
+    result = await _run_job(job.id, JobType.AUTO_EDIT.value, run, db)
+    return {"job_id": job.id, "result": result}
+
+
+@app.get("/render/{job_id}")
+async def download_render(job_id: str, db: Session = Depends(get_db)):
+    job = _get_job_or_404(job_id, db)
+    if not job.output_data:
+        raise HTTPException(status_code=404, detail="No output for this job")
+    try:
+        data = json.loads(job.output_data)
+    except Exception:
+        raise HTTPException(status_code=422, detail="Job output is not parseable")
+
+    render_path = data.get("render_path")
+    if not render_path or not os.path.exists(render_path):
+        raise HTTPException(status_code=404, detail="Render file not found")
+
+    return FileResponse(
+        render_path,
+        media_type="video/mp4",
+        filename=os.path.basename(render_path),
+    )
 
 
 # ── Jobs CRUD ─────────────────────────────────────────────────────────────────

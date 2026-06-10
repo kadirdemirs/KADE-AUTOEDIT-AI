@@ -1,89 +1,135 @@
 import React, { useEffect, useState } from "react";
 import { Preset } from "../types";
 import { api } from "../services/api";
+import { useTheme } from "../theme";
+import { Badge, Banner, Button, Card, EmptyState, Field, SectionHeader, Select, TextInput } from "./ui";
 
-const s: Record<string, React.CSSProperties> = {
-  container: { padding: 12 },
-  header: { fontWeight: 600, fontSize: 13, color: "#e0e0e0", marginBottom: 10 },
-  row: { display: "flex", gap: 6, marginBottom: 10 },
-  input: { flex: 1, padding: "4px 8px", background: "#333", border: "1px solid #444", color: "#eee", borderRadius: 4, fontSize: 12 },
-  select: { flex: 1, padding: "4px 8px", background: "#333", border: "1px solid #444", color: "#eee", borderRadius: 4, fontSize: 12 },
-  btn: { padding: "4px 10px", background: "#4a9eff", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontSize: 12 },
-  card: { background: "#222", borderRadius: 6, padding: 10, marginBottom: 6, display: "flex", justifyContent: "space-between", alignItems: "center" },
-  presetName: { fontSize: 12, fontWeight: 600, color: "#ddd" },
-  presetModule: { fontSize: 10, color: "#888" },
-  delBtn: { padding: "3px 8px", background: "transparent", border: "1px solid #444", color: "#f44336", borderRadius: 4, cursor: "pointer", fontSize: 11 },
-  empty: { color: "#666", fontSize: 12, textAlign: "center", padding: 24 },
-};
-
-const MODULES = ["silence", "whisper", "beat", "scene", "color"];
+const MODULES = [
+  { value: "silence", label: "Sessizlik Kesici" },
+  { value: "whisper", label: "Whisper Transkript" },
+  { value: "beat", label: "Beat Sync" },
+  { value: "scene", label: "Sahne Tespiti" },
+  { value: "color", label: "Otomatik Renk" },
+];
 
 export const PresetManager: React.FC = () => {
+  const { t } = useTheme();
   const [presets, setPresets] = useState<Preset[]>([]);
   const [name, setName] = useState("");
   const [module, setModule] = useState("silence");
   const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ kind: "info" | "error"; text: string } | null>(null);
 
   const load = async () => {
     try {
       const data = await api.getPresets();
       setPresets(data as Preset[]);
-    } catch { /* ignore */ }
+    } catch {
+      setMessage({ kind: "error", text: "Preset listesi yüklenemedi." });
+    }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const save = async () => {
-    if (!name.trim()) return;
+    if (!name.trim()) {
+      setMessage({ kind: "error", text: "Preset adı boş olamaz." });
+      return;
+    }
     setSaving(true);
+    setMessage(null);
     try {
       await api.createPreset({ name: name.trim(), module, settings: {} });
       setName("");
       await load();
+      setMessage({ kind: "info", text: "Preset kaydedildi." });
     } catch (err) {
-      alert(err instanceof Error ? err.message : String(err));
+      setMessage({ kind: "error", text: err instanceof Error ? err.message : String(err) });
     } finally {
       setSaving(false);
     }
   };
 
   const remove = async (id: string) => {
+    setMessage(null);
     try {
       await api.deletePreset(id);
       setPresets((prev) => prev.filter((p) => p.id !== id));
-    } catch { /* ignore */ }
+    } catch {
+      setMessage({ kind: "error", text: "Preset silinemedi." });
+    }
   };
 
   return (
-    <div style={s.container}>
-      <div style={s.header}>Preset Yönetimi</div>
+    <div style={{ padding: 14 }}>
+      <SectionHeader
+        icon="💾"
+        title="Preset Yönetimi"
+        subtitle="Sık kullandığın araç ayarlarını isimlendirip tekrar kullanılabilir hale getir."
+      />
 
-      <div style={s.row}>
-        <input
-          style={s.input}
-          placeholder="Preset adı..."
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && save()}
+      <Card>
+        <Field label="Preset adı" hint="Kısa ve hatırlanır bir ad seç; örneğin 'Podcast temiz kesim'.">
+          <TextInput
+            placeholder="Preset adı..."
+            value={name}
+            onChange={setName}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") save();
+            }}
+          />
+        </Field>
+
+        <Field label="Modül" hint="Bu preset hangi araç ailesi için kaydedilecek?">
+          <Select value={module} onChange={setModule} options={MODULES} />
+        </Field>
+
+        <Button full onClick={save} disabled={saving}>
+          {saving ? "Kaydediliyor..." : "Preset Kaydet"}
+        </Button>
+      </Card>
+
+      {message && <Banner kind={message.kind}>{message.text}</Banner>}
+
+      {presets.length === 0 && (
+        <EmptyState
+          icon="📦"
+          title="Kayıtlı preset yok"
+          hint="İlk presetini oluşturunca bu listede görünecek."
         />
-        <select style={s.select} value={module} onChange={(e) => setModule(e.target.value)}>
-          {MODULES.map((m) => <option key={m} value={m}>{m}</option>)}
-        </select>
-        <button style={s.btn} onClick={save} disabled={saving}>
-          {saving ? "..." : "Kaydet"}
-        </button>
-      </div>
-
-      {presets.length === 0 && <div style={s.empty}>Kayıtlı preset yok.</div>}
+      )}
 
       {presets.map((p: Preset) => (
-        <div key={p.id} style={s.card}>
-          <div>
-            <div style={s.presetName}>{p.name}</div>
-            <div style={s.presetModule}>{p.module}</div>
+        <Card key={p.id} style={{ padding: "12px 14px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 800,
+                  color: t.text,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {p.name}
+              </div>
+              <div style={{ marginTop: 4 }}>
+                <Badge>{p.module}</Badge>
+              </div>
+            </div>
+            <Button
+              variant="secondary"
+              onClick={() => remove(p.id)}
+              style={{ color: t.bad, padding: "8px 10px", flexShrink: 0 }}
+            >
+              Sil
+            </Button>
           </div>
-          <button style={s.delBtn} onClick={() => remove(p.id)}>Sil</button>
-        </div>
+        </Card>
       ))}
     </div>
   );

@@ -1,31 +1,36 @@
-from .silence_cutter import cut_silences
-from .whisper_transcript import transcribe_audio
-from .beat_sync import detect_beats
-from .scene_detector import detect_scenes
-from .auto_color import analyze_color_audio
-from .auto_captions import generate_captions
-from .auto_zoom import detect_zoom_points
-from .viral_detector import detect_viral_segments
-from .podcast_mode import detect_speakers
-from .repeat_detector import detect_repeats
-from .profanity_filter import filter_profanity
-from .auto_chapters import generate_chapters
-from .auto_resize import analyze_resize
-from .broll_suggest import suggest_broll
+"""Analysis modules.
 
-__all__ = [
-    "cut_silences",
-    "transcribe_audio",
-    "detect_beats",
-    "detect_scenes",
-    "analyze_color_audio",
-    "generate_captions",
-    "detect_zoom_points",
-    "detect_viral_segments",
-    "detect_speakers",
-    "detect_repeats",
-    "filter_profanity",
-    "generate_chapters",
-    "analyze_resize",
-    "suggest_broll",
-]
+Exposes each module's public entry point lazily so importing a single submodule
+(e.g. `import modules.auto_edit`) does not force every heavy dependency
+(librosa, whisper, opencv) to load. Access still works as
+`from modules import cut_silences`.
+"""
+import importlib
+
+_EXPORTS = {
+    "cut_silences": "silence_cutter",
+    "transcribe_audio": "whisper_transcript",
+    "detect_beats": "beat_sync",
+    "detect_scenes": "scene_detector",
+    "analyze_color_audio": "auto_color",
+    "generate_captions": "auto_captions",
+    "detect_zoom_points": "auto_zoom",
+    "detect_viral_segments": "viral_detector",
+    "detect_speakers": "podcast_mode",
+    "detect_repeats": "repeat_detector",
+    "filter_profanity": "profanity_filter",
+    "generate_chapters": "auto_chapters",
+    "analyze_resize": "auto_resize",
+    "suggest_broll": "broll_suggest",
+    "find_memes": "meme_finder",
+}
+
+__all__ = list(_EXPORTS)
+
+
+def __getattr__(name: str):
+    module_name = _EXPORTS.get(name)
+    if module_name is None:
+        raise AttributeError(f"module 'modules' has no attribute '{name}'")
+    mod = importlib.import_module(f".{module_name}", __name__)
+    return getattr(mod, name)

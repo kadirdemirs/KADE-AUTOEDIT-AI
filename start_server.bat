@@ -1,17 +1,20 @@
 @echo off
 title KADE AutoEdit AI - Backend Server
-
-REM Python 3.14 yolu (PATH'e eklenmemis olabilir)
-set PYTHON=%LOCALAPPDATA%\Python\pythoncore-3.14-64\python.exe
-
-REM Yoksa PATH'teki python'u dene
-if not exist "%PYTHON%" set PYTHON=python
-
 echo ============================================
 echo  KADE AutoEdit AI Backend
 echo  http://localhost:8472
 echo  Durdurmak icin: Ctrl+C
 echo ============================================
 cd /d "%~dp0backend"
-"%PYTHON%" main.py
+
+REM venv varsa kullan, yoksa setup'a yonlendir
+if exist ".venv\Scripts\activate.bat" (
+    call .venv\Scripts\activate.bat
+    python main.py
+) else (
+    echo UYARI: .venv yok. Once setup.bat calistirin.
+    where py >nul 2>&1 && ( py main.py & goto :eof )
+    where python >nul 2>&1 && ( python main.py & goto :eof )
+    echo HATA: Python bulunamadi.
+)
 pause

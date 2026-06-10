@@ -6,16 +6,25 @@
     <title>KADE AutoEdit AI</title>
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
-      body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      /* UXP gives the panel host its size; html/body must simply fill it.
+         vh/vw don't work in UXP, so fill via absolute positioning + flex. */
+      html, body {
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        display: flex;
+        flex-direction: column;
         background: #1a1a1a;
         color: #e0e0e0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         font-size: 13px;
-        overflow-x: hidden;
       }
-      ::-webkit-scrollbar { width: 6px; }
-      ::-webkit-scrollbar-track { background: #2a2a2a; }
-      ::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
+      #root {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        overflow-y: auto;
+      }
     </style>
   </head>
   <body>

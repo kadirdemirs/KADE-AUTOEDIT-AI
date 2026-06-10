@@ -38,6 +38,13 @@ def _run_beat_detection(audio_path: str, sensitivity: float) -> BeatSyncResult:
     import numpy as np
 
     y, sr = librosa.load(audio_path, sr=None, mono=True)
+    if len(y) == 0:
+        return BeatSyncResult(
+            bpm=0.0,
+            beat_timestamps=[],
+            total_beats=0,
+            beat_confidence=0.0,
+        )
 
     # Detect tempo and beat frames
     tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr, units="frames")
@@ -48,9 +55,10 @@ def _run_beat_detection(audio_path: str, sensitivity: float) -> BeatSyncResult:
 
         # Score each beat by onset strength
         beat_strengths = onset_env[beat_frames]
-        threshold = np.percentile(beat_strengths, (1.0 - sensitivity) * 100)
-        mask = beat_strengths >= threshold
-        beat_frames = beat_frames[mask]
+        if beat_strengths.size:
+            threshold = np.percentile(beat_strengths, (1.0 - sensitivity) * 100)
+            mask = beat_strengths >= threshold
+            beat_frames = beat_frames[mask]
 
     beat_timestamps = librosa.frames_to_time(beat_frames, sr=sr).tolist()
 

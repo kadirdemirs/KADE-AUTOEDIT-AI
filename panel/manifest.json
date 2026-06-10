@@ -5,15 +5,16 @@
   "version": "1.0.0",
   "description": "AI-powered auto-editing panel for Premiere Pro",
   "author": "Kade Media",
+  "main": "index.html",
   "entrypoints": [
     {
       "type": "panel",
       "id": "mainPanel",
       "label": { "default": "KADE AutoEdit" },
-      "minimumSize": { "width": 300, "height": 600 },
-      "maximumSize": { "width": 800, "height": 1200 },
-      "defaultSize": { "width": 380, "height": 720 },
-      "main": "dist/index.html"
+      "minimumSize": { "width": 230, "height": 300 },
+      "maximumSize": { "width": 2000, "height": 2000 },
+      "preferredDockedSize": { "width": 380, "height": 720 },
+      "preferredFloatingSize": { "width": 380, "height": 720 }
     }
   ],
   "requiredPermissions": {
@@ -28,8 +29,8 @@
   },
   "host": [
     {
-      "app": "PPro",
-      "minVersion": "24.0"
+      "app": "premierepro",
+      "minVersion": "25.2.0"
     }
   ]
 }

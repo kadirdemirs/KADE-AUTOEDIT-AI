@@ -19,6 +19,8 @@ import {
 } from "../types";
 import { api } from "../services/api";
 import { wsService } from "../services/websocket";
+import { useTheme } from "../theme";
+import { Badge, Banner, Button, Card, Field, FilePicker, NumberInput, Select, Slider, Toggle } from "./ui";
 
 export type ModuleType =
   | "silence"
@@ -41,41 +43,119 @@ interface Props {
   onResult?: (cuts: CutPoint[]) => void;
 }
 
-const MODULE_META: Record<ModuleType, { label: string; color: string }> = {
-  silence: { label: "Sessizlik Kesici", color: "#4a9eff" },
-  whisper: { label: "Whisper Transkript", color: "#7c4dff" },
-  beat: { label: "Beat Sync", color: "#ff4081" },
-  scene: { label: "Sahne Tespiti", color: "#00bcd4" },
-  color: { label: "Otomatik Renk", color: "#ff9800" },
-  captions: { label: "Auto Captions", color: "#26a69a" },
-  zoom: { label: "Auto Zoom", color: "#ec407a" },
-  viral: { label: "Viral Detector", color: "#ff7043" },
-  podcast: { label: "Podcast Mode", color: "#66bb6a" },
-  repeat: { label: "Repeat Detector", color: "#ab47bc" },
-  profanity: { label: "Profanity Filter", color: "#ef5350" },
-  chapters: { label: "Auto Chapters", color: "#5c6bc0" },
-  resize: { label: "Auto Resize", color: "#29b6f6" },
-  broll: { label: "B-Roll Suggest", color: "#ffa726" },
-};
-
-const s: Record<string, React.CSSProperties> = {
-  card: { background: "#222", borderRadius: 8, padding: 12, marginBottom: 10 },
-  header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
-  title: { fontWeight: 600, fontSize: 13 },
-  label: { fontSize: 11, color: "#aaa", display: "block", marginBottom: 4 },
-  row: { display: "flex", gap: 8, alignItems: "center", marginBottom: 8 },
-  runBtn: { width: "100%", padding: "7px 0", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontSize: 12, fontWeight: 600 },
-  fileBtn: { flex: 1, padding: "5px 8px", background: "#2a2a2a", border: "1px solid #444", color: "#ccc", borderRadius: 4, cursor: "pointer", fontSize: 11, textAlign: "center" },
-  resultBox: { background: "#1a1a1a", borderRadius: 4, padding: 8, marginTop: 8, fontSize: 11, color: "#aaa", maxHeight: 100, overflowY: "auto" },
-  toggle: { display: "flex", gap: 6, alignItems: "center", marginBottom: 8 },
-  checkbox: { width: 14, height: 14, cursor: "pointer" },
-  selectEl: { flex: 1, width: "100%", padding: "4px 8px", background: "#333", border: "1px solid #444", color: "#eee", borderRadius: 4, fontSize: 12, marginBottom: 8 },
-  numberInput: { width: 72, padding: "4px 8px", background: "#333", border: "1px solid #444", color: "#eee", borderRadius: 4, fontSize: 12 },
+const MODULE_META: Record<
+  ModuleType,
+  { label: string; icon: string; accent: string; description: string; tag: string }
+> = {
+  silence: {
+    label: "Sessizlik Kesici",
+    icon: "✂️",
+    accent: "#4a9eff",
+    description: "Boşlukları, nefes aralarını ve gereksiz beklemeleri otomatik kesim noktalarına çevirir.",
+    tag: "Kesim",
+  },
+  whisper: {
+    label: "Whisper Transkript",
+    icon: "📝",
+    accent: "#7c4dff",
+    description: "Konuşmayı yazıya döker; istersen dolgu kelimelerini timeline kesimi olarak önerir.",
+    tag: "Metin",
+  },
+  beat: {
+    label: "Beat Sync",
+    icon: "🥁",
+    accent: "#ff4081",
+    description: "Müziğin BPM ve beat noktalarını çıkarır; montajı ritme oturtmak için analiz üretir.",
+    tag: "Ritim",
+  },
+  scene: {
+    label: "Sahne Tespiti",
+    icon: "🎞️",
+    accent: "#00acc1",
+    description: "Görüntü değişimlerini yakalar ve uzun videoyu sahne parçalarına ayırır.",
+    tag: "Analiz",
+  },
+  color: {
+    label: "Otomatik Renk",
+    icon: "🎨",
+    accent: "#f59e0b",
+    description: "Renk, LUT ve ses seviyesi önerileri üretir; hızlı teknik dengeleme için kullanılır.",
+    tag: "Renk",
+  },
+  captions: {
+    label: "Auto Captions",
+    icon: "💬",
+    accent: "#26a69a",
+    description: "Transkriptten altyazı blokları üretir ve seçtiğin sosyal medya stiline hazırlar.",
+    tag: "Altyazı",
+  },
+  zoom: {
+    label: "Auto Zoom",
+    icon: "🔍",
+    accent: "#ec407a",
+    description: "Konuşma veya vurgu anlarında dinamik zoom keyframe önerileri çıkarır.",
+    tag: "Hareket",
+  },
+  viral: {
+    label: "Viral Detector",
+    icon: "🔥",
+    accent: "#ff7043",
+    description: "Uzun videodan kısa klip adayları bulur ve en güçlü bölümleri puanlar.",
+    tag: "Shorts",
+  },
+  podcast: {
+    label: "Podcast Mode",
+    icon: "🎙️",
+    accent: "#66bb6a",
+    description: "Konuşmacı segmentlerini düzenler ve podcast kayıtları için temiz akış önerir.",
+    tag: "Podcast",
+  },
+  repeat: {
+    label: "Repeat Detector",
+    icon: "🔁",
+    accent: "#ab47bc",
+    description: "Tekrar edilen cümleleri ve denemeleri gruplayıp korunacak en iyi take'i seçer.",
+    tag: "Tekrar",
+  },
+  profanity: {
+    label: "Profanity Filter",
+    icon: "🛡️",
+    accent: "#ef5350",
+    description: "Küfür veya riskli kelimeleri bleep, beep ya da mute noktalarına dönüştürür.",
+    tag: "Temizleme",
+  },
+  chapters: {
+    label: "Auto Chapters",
+    icon: "📚",
+    accent: "#5c6bc0",
+    description: "YouTube açıklaması için zaman kodlu bölüm başlıkları ve açıklama bloğu üretir.",
+    tag: "Bölüm",
+  },
+  resize: {
+    label: "Auto Resize",
+    icon: "📐",
+    accent: "#29b6f6",
+    description: "Farklı sosyal medya oranları için merkez/crop önerileri hazırlar.",
+    tag: "Format",
+  },
+  broll: {
+    label: "B-Roll Suggest",
+    icon: "🧩",
+    accent: "#ffa726",
+    description: "Transkripte göre b-roll arama sorguları ve yerleştirme zamanları önerir.",
+    tag: "B-roll",
+  },
 };
 
 const modelOptions = ["tiny", "base", "small", "medium", "large"];
+const languageOptions = [
+  { value: "tr", label: "Türkçe" },
+  { value: "en", label: "English" },
+  { value: "auto", label: "Otomatik" },
+];
 
 export const ModuleCard: React.FC<Props> = ({ type, onResult }) => {
+  const { t } = useTheme();
   const meta = MODULE_META[type];
   const [file, setFile] = useState<File | null>(null);
   const [progress, setProgress] = useState(0);
@@ -85,6 +165,7 @@ export const ModuleCard: React.FC<Props> = ({ type, onResult }) => {
 
   const [threshold, setThreshold] = useState(-40);
   const [minSilenceMs, setMinSilenceMs] = useState(500);
+  const [keepPaddingMs, setKeepPaddingMs] = useState(100);
   const [fade, setFade] = useState(true);
   const [whisperModel, setWhisperModel] = useState("base");
   const [language, setLanguage] = useState("tr");
@@ -107,7 +188,7 @@ export const ModuleCard: React.FC<Props> = ({ type, onResult }) => {
 
   const handleRun = async () => {
     if (!file) {
-      setError("Lutfen bir dosya secin.");
+      setError("Lütfen bir video veya ses dosyası seç.");
       return;
     }
 
@@ -135,7 +216,12 @@ export const ModuleCard: React.FC<Props> = ({ type, onResult }) => {
   const runModule = (targetFile: File) => {
     switch (type) {
       case "silence":
-        return api.silenceCut(targetFile, { threshold_db: threshold, min_silence_ms: minSilenceMs, fade_ms: fade ? 50 : 0 });
+        return api.silenceCut(targetFile, {
+          threshold_db: threshold,
+          min_silence_ms: minSilenceMs,
+          keep_padding_ms: keepPaddingMs,
+          fade_ms: fade ? 50 : 0,
+        });
       case "whisper":
         return api.transcript(targetFile, { model_name: whisperModel, language, detect_fillers: detectFillers });
       case "beat":
@@ -149,19 +235,37 @@ export const ModuleCard: React.FC<Props> = ({ type, onResult }) => {
       case "zoom":
         return api.autoZoom(targetFile, { min_scale: minScale, max_scale: maxScale, sensitivity });
       case "viral":
-        return api.viralDetect(targetFile, { clip_duration: clipDuration, top_n: topN, min_duration: Math.min(20, clipDuration) });
+        return api.viralDetect(targetFile, {
+          clip_duration: clipDuration,
+          top_n: topN,
+          min_duration: Math.min(20, clipDuration),
+        });
       case "podcast":
         return api.podcastMode(targetFile, { min_segment_duration: minSegmentDuration });
       case "repeat":
-        return api.repeatDetect(targetFile, { model_name: whisperModel, language, similarity_threshold: similarityThreshold });
+        return api.repeatDetect(targetFile, {
+          model_name: whisperModel,
+          language,
+          similarity_threshold: similarityThreshold,
+        });
       case "profanity":
         return api.profanityFilter(targetFile, { model_name: whisperModel, language, replacement });
       case "chapters":
-        return api.autoChapters(targetFile, { model_name: whisperModel, language, min_chapter_duration: minChapterDuration, max_chapters: maxChapters });
+        return api.autoChapters(targetFile, {
+          model_name: whisperModel,
+          language,
+          min_chapter_duration: minChapterDuration,
+          max_chapters: maxChapters,
+        });
       case "resize":
         return api.autoResize(targetFile, {});
       case "broll":
-        return api.brollSuggest(targetFile, { model_name: whisperModel, language, min_duration: minSegmentDuration, max_suggestions: maxSuggestions });
+        return api.brollSuggest(targetFile, {
+          model_name: whisperModel,
+          language,
+          min_duration: minSegmentDuration,
+          max_suggestions: maxSuggestions,
+        });
     }
   };
 
@@ -186,17 +290,19 @@ export const ModuleCard: React.FC<Props> = ({ type, onResult }) => {
       }
       case "scene": {
         const res = payload as SceneDetectResult;
-        setResult(`${res.total_scenes} sahne. Ort. sure: ${res.avg_scene_duration.toFixed(1)}s`);
+        setResult(`${res.total_scenes} sahne. Ortalama süre: ${res.avg_scene_duration.toFixed(1)}s`);
         break;
       }
       case "color": {
         const res = payload as AutoColorResult;
-        setResult(`LUT: ${res.color_settings.lut_suggestion} | LUFS: ${res.audio_settings.current_lufs.toFixed(1)} -> ${res.audio_settings.target_lufs}`);
+        setResult(
+          `LUT: ${res.color_settings.lut_suggestion} | LUFS: ${res.audio_settings.current_lufs.toFixed(1)} -> ${res.audio_settings.target_lufs}`,
+        );
         break;
       }
       case "captions": {
         const res = payload as AutoCaptionsResult;
-        setResult(`${res.total_captions} caption hazir. Stil: ${res.style}, dil: ${res.language}`);
+        setResult(`${res.total_captions} altyazı hazır. Stil: ${res.style}, dil: ${res.language}`);
         break;
       }
       case "zoom": {
@@ -212,171 +318,283 @@ export const ModuleCard: React.FC<Props> = ({ type, onResult }) => {
       }
       case "podcast": {
         const res = payload as PodcastResult;
-        setResult(`${res.total_speakers} konusmaci, ${res.segments.length} segment`);
+        setResult(`${res.total_speakers} konuşmacı, ${res.segments.length} segment`);
         onResult?.(res.cut_points);
         break;
       }
       case "repeat": {
         const res = payload as RepeatDetectResult;
-        setResult(`${res.total_groups} tekrar grubu. Kazanilan sure: ${res.time_saved.toFixed(1)}s`);
+        setResult(`${res.total_groups} tekrar grubu. Kazanılan süre: ${res.time_saved.toFixed(1)}s`);
         onResult?.(res.cuts_suggested);
         break;
       }
       case "profanity": {
         const res = payload as ProfanityResult;
-        setResult(`${res.total_found} kufur bulundu: ${res.words_found.join(", ") || "temiz"}`);
+        setResult(`${res.total_found} riskli kelime bulundu: ${res.words_found.join(", ") || "temiz"}`);
         break;
       }
       case "chapters": {
         const res = payload as AutoChaptersResult;
-        setResult(`${res.total_chapters} bolum hazir.\n${res.youtube_format.slice(0, 160)}`);
+        setResult(`${res.total_chapters} bölüm hazır.\n${res.youtube_format.slice(0, 160)}`);
         break;
       }
       case "resize": {
         const res = payload as AutoResizeResult;
-        setResult(`${res.original_resolution} -> ${res.formats.length} format. Subject: ${res.subject_detected ? "bulundu" : "merkez"}`);
+        setResult(
+          `${res.original_resolution} -> ${res.formats.length} format. Subject: ${
+            res.subject_detected ? "bulundu" : "merkez"
+          }`,
+        );
         break;
       }
       case "broll": {
         const res = payload as BRollResult;
-        setResult(`${res.total_suggestions} B-roll onerisi. Toplam: ${res.total_broll_duration.toFixed(1)}s`);
+        setResult(`${res.total_suggestions} B-roll önerisi. Toplam: ${res.total_broll_duration.toFixed(1)}s`);
         break;
       }
     }
   };
 
   return (
-    <div style={s.card}>
-      <div style={s.header}>
-        <span style={{ ...s.title, color: meta.color }}>{meta.label}</span>
+    <Card style={{ padding: 14 }}>
+      <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 12 }}>
+        <div
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 8,
+            background: `${meta.accent}22`,
+            color: meta.accent,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 18,
+            flexShrink: 0,
+          }}
+        >
+          {meta.icon}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 800, color: t.text }}>{meta.label}</div>
+            <Badge color={meta.accent}>{meta.tag}</Badge>
+          </div>
+          <div style={{ fontSize: 11.5, color: t.textDim, lineHeight: 1.45, marginTop: 4 }}>
+            {meta.description}
+          </div>
+        </div>
       </div>
 
-      <div style={s.row}>
-        <label style={{ ...s.fileBtn, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {file ? file.name : "Dosya sec..."}
-          <input
-            type="file"
-            accept="video/*,audio/*"
-            style={{ display: "none" }}
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          />
-        </label>
-      </div>
+      <Field label="Dosya" hint="Analiz edilecek video veya ses dosyası. Sonuçlar araç tipine göre timeline kesimi, metin veya ayar önerisi üretir.">
+        <FilePicker file={file} onPick={setFile} placeholder="Video / ses dosyası seç..." />
+      </Field>
 
       {renderControls()}
 
-      {running && <ProgressBar value={progress} label="Isleniyor..." color={meta.color} />}
+      {running && <ProgressBar value={progress} label="İşleniyor..." color={meta.accent} />}
 
-      <button
-        style={{ ...s.runBtn, background: running ? "#444" : meta.color, marginTop: 8 }}
+      <Button
+        full
         onClick={handleRun}
         disabled={running}
+        style={{ marginTop: 8, background: running ? t.surface2 : meta.accent }}
       >
-        {running ? "Isleniyor..." : "Calistir"}
-      </button>
+        {running ? "İşleniyor..." : "Çalıştır"}
+      </Button>
 
-      {result && <div style={{ ...s.resultBox, whiteSpace: "pre-wrap" }}>{result}</div>}
-      {error && <div style={{ ...s.resultBox, color: "#ff5252" }}>{error}</div>}
-    </div>
+      {result && (
+        <div
+          style={{
+            background: t.surface2,
+            border: `1px solid ${t.border}`,
+            borderRadius: 8,
+            padding: 10,
+            marginTop: 10,
+            fontSize: 11.5,
+            color: t.text,
+            lineHeight: 1.45,
+            whiteSpace: "pre-wrap",
+            maxHeight: 130,
+            overflowY: "auto",
+          }}
+        >
+          {result}
+        </div>
+      )}
+      {error && <Banner kind="error">{error}</Banner>}
+    </Card>
   );
 
   function renderControls() {
     return (
       <>
         {renderTranscriptControls()}
+
         {type === "silence" && (
           <>
-            <label style={s.label}>Esik (dB): {threshold}</label>
-            <input type="range" min={-70} max={-10} value={threshold} style={{ width: "100%", marginBottom: 8 }} onChange={(e) => setThreshold(Number(e.target.value))} />
-            <label style={s.label}>Min. sessizlik (ms): {minSilenceMs}</label>
-            <input type="range" min={100} max={3000} step={100} value={minSilenceMs} style={{ width: "100%", marginBottom: 8 }} onChange={(e) => setMinSilenceMs(Number(e.target.value))} />
-            <div style={s.toggle}>
-              <input type="checkbox" style={s.checkbox} checked={fade} onChange={(e) => setFade(e.target.checked)} />
-              <span style={{ fontSize: 12, color: "#ccc" }}>Fade efekti</span>
-            </div>
+            <Slider
+              label="Eşik"
+              hint="Daha düşük değer daha sessiz bölümleri yakalar; konuşma kesiliyorsa değeri yükselt."
+              value={threshold}
+              min={-70}
+              max={-10}
+              unit=" dB"
+              onChange={setThreshold}
+            />
+            <Slider
+              label="Minimum sessizlik"
+              hint="Kısa nefesleri korumak için artır; agresif temizlik için azalt."
+              value={minSilenceMs}
+              min={100}
+              max={3000}
+              step={100}
+              unit=" ms"
+              onChange={setMinSilenceMs}
+            />
+            <Slider
+              label="Konuşma tamponu"
+              hint="Kesimlerin iki yanında bırakılacak güvenli pay. Kelimeler kırpılıyorsa artır."
+              value={keepPaddingMs}
+              min={0}
+              max={500}
+              step={10}
+              unit=" ms"
+              onChange={setKeepPaddingMs}
+            />
+            <Toggle
+              checked={fade}
+              onChange={setFade}
+              label="Fade geçişi ekle"
+              hint="Kesimlerin kulağa daha yumuşak gelmesi için kısa fade uygular."
+            />
           </>
         )}
 
         {(type === "beat" || type === "zoom") && (
-          <>
-            <label style={s.label}>Hassasiyet: {sensitivity.toFixed(1)}</label>
-            <input type="range" min={0.1} max={1.0} step={0.1} value={sensitivity} style={{ width: "100%", marginBottom: 8 }} onChange={(e) => setSensitivity(Number(e.target.value))} />
-          </>
+          <Slider
+            label="Hassasiyet"
+            hint="Yüksek değer daha fazla vurgu noktası üretir; düşük değer daha sakin sonuç verir."
+            value={sensitivity}
+            min={0.1}
+            max={1}
+            step={0.1}
+            onChange={setSensitivity}
+          />
         )}
 
         {type === "scene" && (
-          <>
-            <label style={s.label}>Esik: {sceneThreshold}</label>
-            <input type="range" min={5} max={100} value={sceneThreshold} style={{ width: "100%", marginBottom: 8 }} onChange={(e) => setSceneThreshold(Number(e.target.value))} />
-          </>
+          <Slider
+            label="Sahne eşiği"
+            hint="Yüksek değer yalnızca belirgin geçişleri yakalar; düşük değer daha çok sahne çıkarır."
+            value={sceneThreshold}
+            min={5}
+            max={100}
+            onChange={setSceneThreshold}
+          />
         )}
 
         {type === "color" && (
           <>
-            <label style={s.label}>Hedef LUFS: {targetLufs}</label>
-            <input type="range" min={-30} max={-6} value={targetLufs} style={{ width: "100%", marginBottom: 8 }} onChange={(e) => setTargetLufs(Number(e.target.value))} />
-            <div style={s.toggle}>
-              <input type="checkbox" style={s.checkbox} checked={denoise} onChange={(e) => setDenoise(e.target.checked)} />
-              <span style={{ fontSize: 12, color: "#ccc" }}>Gurultu azaltma</span>
-            </div>
+            <Slider
+              label="Hedef LUFS"
+              hint="Sosyal medya için -14 LUFS genelde güvenli başlangıçtır."
+              value={targetLufs}
+              min={-30}
+              max={-6}
+              unit=" LUFS"
+              onChange={setTargetLufs}
+            />
+            <Toggle
+              checked={denoise}
+              onChange={setDenoise}
+              label="Gürültü azaltma öner"
+              hint="Arka plan uğultusu olan kayıtlar için ses temizleme adımı üretir."
+            />
           </>
         )}
 
         {type === "captions" && (
-          <>
-            <label style={s.label}>Caption stili</label>
-            <select style={s.selectEl} value={captionStyle} onChange={(e) => setCaptionStyle(e.target.value)}>
-              {["youtube", "tiktok", "podcast", "minimal"].map((style) => <option key={style} value={style}>{style}</option>)}
-            </select>
-          </>
+          <Field label="Caption stili" hint="Altyazı bloklarının hedef platforma göre ritmini ve görünüm adını belirler.">
+            <Select
+              value={captionStyle}
+              onChange={setCaptionStyle}
+              options={["youtube", "tiktok", "podcast", "minimal"].map((style) => ({ value: style, label: style }))}
+            />
+          </Field>
         )}
 
         {type === "zoom" && (
-          <div style={s.row}>
-            <label style={{ ...s.label, flex: 1 }}>Min scale <input style={s.numberInput} type="number" min={1} max={3} step={0.05} value={minScale} onChange={(e) => setMinScale(Number(e.target.value))} /></label>
-            <label style={{ ...s.label, flex: 1 }}>Max scale <input style={s.numberInput} type="number" min={1} max={3} step={0.05} value={maxScale} onChange={(e) => setMaxScale(Number(e.target.value))} /></label>
+          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+            <NumberInput label="Min scale" value={minScale} min={1} max={3} step={0.05} onChange={setMinScale} />
+            <NumberInput label="Max scale" value={maxScale} min={1} max={3} step={0.05} onChange={setMaxScale} />
           </div>
         )}
 
         {type === "viral" && (
-          <div style={s.row}>
-            <label style={{ ...s.label, flex: 1 }}>Clip sn <input style={s.numberInput} type="number" min={10} max={180} value={clipDuration} onChange={(e) => setClipDuration(Number(e.target.value))} /></label>
-            <label style={{ ...s.label, flex: 1 }}>Top <input style={s.numberInput} type="number" min={1} max={10} value={topN} onChange={(e) => setTopN(Number(e.target.value))} /></label>
+          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+            <NumberInput label="Clip saniye" value={clipDuration} min={10} max={180} onChange={setClipDuration} />
+            <NumberInput label="Top aday" value={topN} min={1} max={10} onChange={setTopN} />
           </div>
         )}
 
         {(type === "podcast" || type === "broll") && (
-          <label style={s.label}>
-            Min. segment (sn): {minSegmentDuration.toFixed(1)}
-            <input type="range" min={0.5} max={10} step={0.5} value={minSegmentDuration} style={{ width: "100%", marginTop: 4, marginBottom: 8 }} onChange={(e) => setMinSegmentDuration(Number(e.target.value))} />
-          </label>
+          <Slider
+            label="Minimum segment"
+            hint="Çok kısa konuşma parçalarını elemek için segment süresini artır."
+            value={minSegmentDuration}
+            min={0.5}
+            max={10}
+            step={0.5}
+            unit=" sn"
+            onChange={setMinSegmentDuration}
+          />
         )}
 
         {type === "repeat" && (
-          <>
-            <label style={s.label}>Benzerlik: {similarityThreshold.toFixed(2)}</label>
-            <input type="range" min={0.1} max={0.95} step={0.05} value={similarityThreshold} style={{ width: "100%", marginBottom: 8 }} onChange={(e) => setSimilarityThreshold(Number(e.target.value))} />
-          </>
+          <Slider
+            label="Benzerlik"
+            hint="Yüksek değer yalnızca çok benzer tekrarları gruplar; düşük değer daha agresif tarar."
+            value={similarityThreshold}
+            min={0.1}
+            max={0.95}
+            step={0.05}
+            onChange={setSimilarityThreshold}
+          />
         )}
 
         {type === "profanity" && (
-          <>
-            <label style={s.label}>Degistirme</label>
-            <select style={s.selectEl} value={replacement} onChange={(e) => setReplacement(e.target.value)}>
-              {["bleep", "beep", "mute"].map((mode) => <option key={mode} value={mode}>{mode}</option>)}
-            </select>
-          </>
+          <Field label="Değiştirme modu" hint="Riskli kelimede bleep tonu, beep etiketi veya sessize alma noktası üretir.">
+            <Select
+              value={replacement}
+              onChange={setReplacement}
+              options={["bleep", "beep", "mute"].map((mode) => ({ value: mode, label: mode }))}
+            />
+          </Field>
         )}
 
         {type === "chapters" && (
-          <div style={s.row}>
-            <label style={{ ...s.label, flex: 1 }}>Min sn <input style={s.numberInput} type="number" min={10} max={300} value={minChapterDuration} onChange={(e) => setMinChapterDuration(Number(e.target.value))} /></label>
-            <label style={{ ...s.label, flex: 1 }}>Max <input style={s.numberInput} type="number" min={1} max={40} value={maxChapters} onChange={(e) => setMaxChapters(Number(e.target.value))} /></label>
+          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+            <NumberInput
+              label="Min bölüm sn"
+              value={minChapterDuration}
+              min={10}
+              max={300}
+              onChange={setMinChapterDuration}
+            />
+            <NumberInput label="Max bölüm" value={maxChapters} min={1} max={40} onChange={setMaxChapters} />
           </div>
         )}
 
         {type === "broll" && (
-          <label style={s.label}>Max oneriler: {maxSuggestions}</label>
+          <Slider
+            label="Maksimum öneri"
+            hint="Daha kısa listeler için azalt; detaylı b-roll planı için artır."
+            value={maxSuggestions}
+            min={5}
+            max={50}
+            step={1}
+            onChange={setMaxSuggestions}
+          />
         )}
       </>
     );
@@ -389,21 +607,23 @@ export const ModuleCard: React.FC<Props> = ({ type, onResult }) => {
 
     return (
       <>
-        <label style={s.label}>Model</label>
-        <select style={s.selectEl} value={whisperModel} onChange={(e) => setWhisperModel(e.target.value)}>
-          {modelOptions.map((m) => <option key={m} value={m}>{m}</option>)}
-        </select>
-        <label style={s.label}>Dil</label>
-        <select style={s.selectEl} value={language} onChange={(e) => setLanguage(e.target.value)}>
-          <option value="tr">Turkce</option>
-          <option value="en">English</option>
-          <option value="auto">Otomatik</option>
-        </select>
+        <Field label="Model" hint="Küçük modeller hızlıdır; büyük modeller daha isabetli transkript üretir.">
+          <Select
+            value={whisperModel}
+            onChange={setWhisperModel}
+            options={modelOptions.map((model) => ({ value: model, label: model }))}
+          />
+        </Field>
+        <Field label="Dil" hint="Dil netse seç; karışık kayıtlarda otomatik algılama daha esnek olur.">
+          <Select value={language} onChange={setLanguage} options={languageOptions} />
+        </Field>
         {type === "whisper" && (
-          <div style={s.toggle}>
-            <input type="checkbox" style={s.checkbox} checked={detectFillers} onChange={(e) => setDetectFillers(e.target.checked)} />
-            <span style={{ fontSize: 12, color: "#ccc" }}>Dolgu kelimeleri kes</span>
-          </div>
+          <Toggle
+            checked={detectFillers}
+            onChange={setDetectFillers}
+            label="Dolgu kelimeleri kesim olarak öner"
+            hint="'ıı', 'yani', 'şey' gibi tekrarları timeline kesim noktalarına dönüştürür."
+          />
         )}
       </>
     );

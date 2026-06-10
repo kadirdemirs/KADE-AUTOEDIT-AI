@@ -1,19 +1,26 @@
 import React, { useEffect, useState } from "react";
 import { CutPoint, TabId } from "./types";
 import { TimelineViewer } from "./components/TimelineViewer";
+import { AutoEditPanel } from "./components/AutoEditPanel";
 import { ModuleCard, ModuleType } from "./components/ModuleCard";
+import { MemeFinder } from "./components/MemeFinder";
+import { AssetLibrary } from "./components/AssetLibrary";
 import { PresetManager } from "./components/PresetManager";
 import { JobQueue } from "./components/JobQueue";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { api } from "./services/api";
+import { useTheme } from "./theme";
+import { Badge, Button, SectionHeader } from "./components/ui";
 
-const TABS: { id: TabId; label: string }[] = [
-  { id: "timeline", label: "Timeline" },
-  { id: "modules", label: "Moduller" },
-  { id: "presets", label: "Presets" },
-  { id: "queue", label: "Kuyruk" },
-  { id: "settings", label: "Ayarlar" },
+const TABS: { id: TabId; label: string; icon: string }[] = [
+  { id: "autoedit", label: "Auto Edit", icon: "⚡" },
+  { id: "library", label: "Library", icon: "📚" },
+  { id: "modules", label: "Araçlar", icon: "🧰" },
+  { id: "timeline", label: "Timeline", icon: "🎞️" },
+  { id: "presets", label: "Preset", icon: "💾" },
+  { id: "queue", label: "Kuyruk", icon: "📋" },
+  { id: "settings", label: "Ayarlar", icon: "⚙️" },
 ];
 
 const MODULES: ModuleType[] = [
@@ -33,41 +40,9 @@ const MODULES: ModuleType[] = [
   "broll",
 ];
 
-const s: Record<string, React.CSSProperties> = {
-  app: { display: "flex", flexDirection: "column", height: "100vh", background: "#1a1a1a", color: "#e0e0e0" },
-  topBar: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", background: "#111", borderBottom: "1px solid #2a2a2a", flexShrink: 0 },
-  appTitle: { fontWeight: 700, fontSize: 13, color: "#fff", letterSpacing: 0.5 },
-  statusLabel: { fontSize: 10, color: "#888" },
-  tabBar: { display: "flex", background: "#111", borderBottom: "1px solid #2a2a2a", flexShrink: 0 },
-  content: { flex: 1, overflowY: "auto" },
-};
-
-const statusDotStyle = (online: boolean): React.CSSProperties => ({
-  width: 7,
-  height: 7,
-  borderRadius: "50%",
-  background: online ? "#4caf50" : "#f44336",
-  display: "inline-block",
-  marginRight: 5,
-});
-
-const tabStyle = (active: boolean): React.CSSProperties => ({
-  flex: 1,
-  padding: "8px 2px",
-  fontSize: 11,
-  textAlign: "center",
-  cursor: "pointer",
-  color: active ? "#4a9eff" : "#888",
-  background: "transparent",
-  border: "none",
-  borderBottomStyle: "solid",
-  borderBottomWidth: 2,
-  borderBottomColor: active ? "#4a9eff" : "transparent",
-  transition: "color 0.15s",
-});
-
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<TabId>("modules");
+  const { t, toggle } = useTheme();
+  const [activeTab, setActiveTab] = useState<TabId>("autoedit");
   const [online, setOnline] = useState(false);
   const [pendingCuts, setPendingCuts] = useState<CutPoint[]>([]);
   const { isConnected } = useWebSocket();
@@ -92,35 +67,162 @@ export const App: React.FC = () => {
     setActiveTab("timeline");
   };
 
+  const isUp = online && isConnected;
+
   return (
-    <div style={s.app}>
-      <div style={s.topBar}>
-        <span style={s.appTitle}>KADE AutoEdit AI</span>
-        <span>
-          <span style={statusDotStyle(online && isConnected)} />
-          <span style={s.statusLabel}>
-            {online && isConnected ? "Cevrimici" : "Cevrimdisi"}
-          </span>
-        </span>
-      </div>
-
-      <div style={s.tabBar}>
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            style={tabStyle(activeTab === tab.id)}
-            onClick={() => setActiveTab(tab.id)}
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        flex: 1,
+        minHeight: 0,
+        background: t.bg,
+        color: t.text,
+        fontFamily: "Inter, Segoe UI, Arial, sans-serif",
+      }}
+    >
+      {/* Top bar */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: "11px 14px",
+          background: t.surface,
+          borderBottom: `1px solid ${t.border}`,
+          flexShrink: 0,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+          <span
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 8,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: `linear-gradient(135deg, ${t.accent}, ${t.accent2})`,
+              color: t.accentText,
+              fontSize: 17,
+              flexShrink: 0,
+            }}
           >
-            {tab.label}
-          </button>
-        ))}
+            🎬
+          </span>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 14, color: t.text, letterSpacing: 0 }}>KADE AutoEdit</div>
+            <div style={{ fontSize: 9.5, color: t.textFaint, letterSpacing: 0, textTransform: "uppercase" }}>
+              AI Video Editor
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Button
+            onClick={toggle}
+            title="Tema değiştir"
+            variant="secondary"
+            style={{
+              width: 34,
+              height: 30,
+              padding: 0,
+              fontSize: 13,
+              lineHeight: 1,
+            }}
+          >
+            {t.name === "dark" ? "☀️" : "🌙"}
+          </Button>
+
+          <Badge color={isUp ? t.good : t.bad} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: isUp ? t.good : t.bad,
+                display: "inline-block",
+              }}
+            />
+            {isUp ? "Çevrimiçi" : "Çevrimdışı"}
+          </Badge>
+        </div>
       </div>
 
-      <div style={s.content}>
+      {/* Offline helper banner */}
+      {!isUp && (
+        <div
+          style={{
+            background: "rgba(255,176,32,0.12)",
+            color: t.warn,
+            fontSize: 11,
+            padding: "8px 14px",
+            borderBottom: `1px solid ${t.border}`,
+            lineHeight: 1.5,
+          }}
+        >
+          ⚠️ Sunucuya bağlanılamıyor. <b>KADE-Baslat.bat</b>'ı çalıştırıp backend'in açık olduğundan emin olun.
+        </div>
+      )}
+
+      {/* Tab bar */}
+      <div
+        style={{
+          display: "flex",
+          gap: 6,
+          padding: "8px 10px",
+          background: t.surface,
+          borderBottom: `1px solid ${t.border}`,
+          flexShrink: 0,
+          overflowX: "auto",
+        }}
+      >
+        {TABS.map((tab) => {
+          const active = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              style={{
+                minWidth: 64,
+                flex: 1,
+                padding: "8px 7px",
+                fontSize: 10.5,
+                fontWeight: active ? 700 : 500,
+                textAlign: "center",
+                cursor: "pointer",
+                color: active ? t.accent : t.textDim,
+                background: active ? `${t.accent}16` : t.surface2,
+                border: `1px solid ${active ? `${t.accent}66` : t.border}`,
+                borderRadius: 8,
+                transition: "color 0.15s, background 0.15s, border-color 0.15s",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 3,
+              }}
+            >
+              <span style={{ fontSize: 15 }}>{tab.icon}</span>
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Content */}
+      <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
+        {activeTab === "autoedit" && <AutoEditPanel />}
+        {activeTab === "library" && <AssetLibrary />}
         {activeTab === "timeline" && <TimelineViewer pendingCuts={pendingCuts} />}
 
         {activeTab === "modules" && (
-          <div style={{ padding: 8 }}>
+          <div style={{ padding: 14 }}>
+            <SectionHeader
+              icon="🧰"
+              title="Araçlar"
+              subtitle="Tek bir işlem yapmak istediğinde. Her araç videonu analiz eder ve öneri üretir; sonuçları Timeline'a gönderebilir veya Premiere'e uygulayabilirsin."
+            />
+            <MemeFinder />
             {MODULES.map((module) => (
               <ModuleCard key={module} type={module} onResult={handleModuleResult} />
             ))}

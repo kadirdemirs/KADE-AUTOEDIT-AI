@@ -27,6 +27,8 @@ class JobType(str, Enum):
     AUTO_CHAPTERS = "AUTO_CHAPTERS"
     AUTO_RESIZE = "AUTO_RESIZE"
     BROLL_SUGGEST = "BROLL_SUGGEST"
+    AUTO_EDIT = "AUTO_EDIT"
+    MEME_FIND = "MEME_FIND"
 
 
 class Job(BaseModel):

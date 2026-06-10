@@ -50,6 +50,20 @@ def test_beat_detection_sensitivity_filter(tmp_path):
     assert result_filtered.total_beats <= result_full.total_beats
 
 
+def test_beat_detection_handles_no_detected_beats(tmp_path):
+    import soundfile as sf
+
+    sr = 22050
+    y = np.sin(2 * np.pi * 440 * np.linspace(0, 1.5, int(sr * 1.5), endpoint=False))
+    audio_file = str(tmp_path / "tone.wav")
+    sf.write(audio_file, y, sr)
+
+    result = _run_beat_detection(audio_file, sensitivity=0.5)
+
+    assert result.total_beats >= 0
+    assert isinstance(result.beat_timestamps, list)
+
+
 @pytest.mark.asyncio
 async def test_detect_beats_missing_file():
     from modules.beat_sync import detect_beats

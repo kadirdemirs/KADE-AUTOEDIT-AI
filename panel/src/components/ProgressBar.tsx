@@ -1,4 +1,5 @@
 import React from "react";
+import { useTheme } from "../theme";
 
 interface Props {
   value: number;  // 0-100
@@ -9,9 +10,11 @@ interface Props {
 export const ProgressBar: React.FC<Props> = ({
   value,
   label,
-  color = "#4a9eff",
+  color,
 }) => {
+  const { t } = useTheme();
   const clamped = Math.max(0, Math.min(100, value));
+  const barColor = color || t.accent;
 
   return (
     <div style={{ width: "100%" }}>
@@ -21,7 +24,7 @@ export const ProgressBar: React.FC<Props> = ({
             display: "flex",
             justifyContent: "space-between",
             fontSize: 11,
-            color: "#999",
+            color: t.textDim,
             marginBottom: 3,
           }}
         >
@@ -33,7 +36,7 @@ export const ProgressBar: React.FC<Props> = ({
         style={{
           width: "100%",
           height: 6,
-          background: "#333",
+          background: t.surface2,
           borderRadius: 3,
           overflow: "hidden",
         }}
@@ -42,7 +45,7 @@ export const ProgressBar: React.FC<Props> = ({
           style={{
             width: `${clamped}%`,
             height: "100%",
-            background: color,
+            background: barColor,
             borderRadius: 3,
             transition: "width 0.3s ease",
           }}

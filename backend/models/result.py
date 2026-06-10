@@ -259,3 +259,27 @@ class BRollResult(BaseModel):
     suggestions: List[BRollSuggestion]
     total_suggestions: int
     total_broll_duration: float
+
+
+# ── MemeFinder ─────────────────────────────────────────────────────────────────
+
+class MemeSuggestion(BaseModel):
+    source: str             # "generated" | "imgflip" | "tenor" | "giphy"
+    title: str              # template/meme name or caption
+    url: Optional[str] = None       # remote image/gif URL (api sources)
+    local_path: Optional[str] = None  # generated file on disk
+    media_type: str = "image"       # "image" | "gif"
+    query: str = ""                  # the search term / topic that matched
+    top_text: str = ""               # for generated memes
+    bottom_text: str = ""
+    keywords: List[str] = []
+    language: str = "tr"             # "tr" | "en"
+    score: float = 0.5               # relevance 0.0–1.0
+    placement: Optional[float] = None  # suggested video timestamp (auto mode)
+
+
+class MemeResult(BaseModel):
+    suggestions: List[MemeSuggestion]
+    total: int
+    mode: str               # "text" | "transcript"
+    sources_used: List[str]

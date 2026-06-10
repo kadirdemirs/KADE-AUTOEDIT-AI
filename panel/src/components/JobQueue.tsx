@@ -1,31 +1,11 @@
-import React from "react";
+import React, { useState } from "react";
 import { ProgressBar } from "./ProgressBar";
 import { Job } from "../types";
 import { useJobQueue } from "../hooks/useJobQueue";
 import { premiereAPI } from "../services/premiere";
 import { api } from "../services/api";
-
-const STATUS_COLOR: Record<string, string> = {
-  PENDING: "#aaa",
-  PROCESSING: "#4a9eff",
-  DONE: "#4caf50",
-  FAILED: "#f44336",
-};
-
-const s: Record<string, React.CSSProperties> = {
-  container: { padding: 12 },
-  header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
-  title: { fontWeight: 600, fontSize: 13, color: "#e0e0e0" },
-  refreshBtn: { fontSize: 11, background: "#2a2a2a", border: "1px solid #444", color: "#ccc", padding: "3px 8px", borderRadius: 4, cursor: "pointer" },
-  card: { background: "#222", borderRadius: 6, padding: 10, marginBottom: 8 },
-  row: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 },
-  jobName: { fontSize: 12, fontWeight: 600, color: "#ddd" },
-  statusBadge: { fontSize: 10, padding: "2px 6px", borderRadius: 10 },
-  time: { fontSize: 10, color: "#666" },
-  btnRow: { display: "flex", gap: 6, marginTop: 6 },
-  btn: { flex: 1, padding: "4px 0", border: "none", borderRadius: 4, cursor: "pointer", fontSize: 11 },
-  empty: { color: "#666", fontSize: 12, textAlign: "center", padding: 24 },
-};
+import { useTheme } from "../theme";
+import { Badge, Banner, Button, Card, EmptyState, SectionHeader } from "./ui";
 
 function timeSince(iso?: string): string {
   if (!iso) return "";
@@ -35,78 +15,124 @@ function timeSince(iso?: string): string {
   return `${Math.floor(diff / 3600)}h önce`;
 }
 
+function jobLabel(type: string): string {
+  return type.replace(/_/g, " ").toLowerCase();
+}
+
 export const JobQueue: React.FC = () => {
+  const { t } = useTheme();
   const { jobs, loading, fetchJobs, removeJob } = useJobQueue();
+  const [message, setMessage] = useState<{ kind: "info" | "error"; text: string } | null>(null);
+
+  const statusColor: Record<string, string> = {
+    PENDING: t.textDim,
+    PROCESSING: t.accent,
+    DONE: t.good,
+    FAILED: t.bad,
+  };
 
   const handleApplyToPremiere = async (job: Job) => {
+    setMessage(null);
     if (!premiereAPI.isAvailable()) {
-      alert("Premiere Pro bağlantısı yok.");
+      setMessage({ kind: "error", text: "Premiere Pro bağlantısı yok." });
       return;
     }
     try {
-      const detail = await api.getJob(job.id) as { output_data?: { cut_points?: unknown[] } };
+      const detail = (await api.getJob(job.id)) as { output_data?: { cut_points?: unknown[] } };
       const cuts = detail.output_data?.cut_points;
       if (cuts?.length) {
         await premiereAPI.applyEdits(cuts as Parameters<typeof premiereAPI.applyEdits>[0]);
-        alert("Kesimler Premiere'e uygulandı.");
+        setMessage({ kind: "info", text: "Kesimler Premiere'e uygulandı." });
       } else {
-        alert("Bu job'da uygulanabilir kesim yok.");
+        setMessage({ kind: "error", text: "Bu işte uygulanabilir kesim yok." });
       }
     } catch (err) {
-      alert(`Hata: ${err instanceof Error ? err.message : err}`);
+      setMessage({ kind: "error", text: err instanceof Error ? err.message : String(err) });
+    }
+  };
+
+  const handleRemove = async (id: string) => {
+    setMessage(null);
+    try {
+      await removeJob(id);
+    } catch {
+      setMessage({ kind: "error", text: "İş silinemedi." });
     }
   };
 
   return (
-    <div style={s.container}>
-      <div style={s.header}>
-        <span style={s.title}>İş Kuyruğu</span>
-        <button style={s.refreshBtn} onClick={fetchJobs} disabled={loading}>
+    <div style={{ padding: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+        <SectionHeader
+          icon="📋"
+          title="İş Kuyruğu"
+          subtitle="Çalışan ve tamamlanan analizleri takip et; uygun sonuçları Premiere timeline'a uygula."
+        />
+        <Button variant="secondary" onClick={fetchJobs} disabled={loading} style={{ padding: "8px 10px", flexShrink: 0 }}>
           {loading ? "..." : "Yenile"}
-        </button>
+        </Button>
       </div>
 
+      {message && <Banner kind={message.kind}>{message.text}</Banner>}
+
       {jobs.length === 0 && !loading && (
-        <div style={s.empty}>Henüz işlem yok.</div>
+        <EmptyState icon="🧾" title="Henüz işlem yok" hint="Auto Edit veya araçlardan biri çalışınca işler burada listelenir." />
       )}
 
-      {jobs.map((job: Job) => (
-        <div key={job.id} style={s.card}>
-          <div style={s.row}>
-            <span style={s.jobName}>{job.type.replace("_", " ")}</span>
-            <span style={{ ...s.statusBadge, background: STATUS_COLOR[job.status] + "33", color: STATUS_COLOR[job.status] }}>
-              {job.status}
-            </span>
-          </div>
+      {jobs.map((job: Job) => {
+        const color = statusColor[job.status] || t.textDim;
+        return (
+          <Card key={job.id} style={{ padding: "12px 14px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 800,
+                    color: t.text,
+                    textTransform: "capitalize",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {jobLabel(job.type)}
+                </div>
+                <div style={{ fontSize: 10.5, color: t.textFaint, marginTop: 3 }}>
+                  {timeSince(job.created_at)} · {job.id.slice(0, 8)}
+                </div>
+              </div>
+              <Badge color={color}>{job.status}</Badge>
+            </div>
 
-          {job.status === "PROCESSING" && (
-            <ProgressBar value={Number(job.progress)} color="#4a9eff" />
-          )}
-
-          <div style={s.time}>{timeSince(job.created_at)} · {job.id.slice(0, 8)}</div>
-
-          {job.error_message && (
-            <div style={{ fontSize: 10, color: "#f44336", marginTop: 4 }}>{job.error_message}</div>
-          )}
-
-          <div style={s.btnRow}>
-            {job.status === "DONE" && (
-              <button
-                style={{ ...s.btn, background: "#1e3a5f", color: "#4a9eff" }}
-                onClick={() => handleApplyToPremiere(job)}
-              >
-                Premiere'e Uygula
-              </button>
+            {job.status === "PROCESSING" && (
+              <div style={{ marginTop: 10 }}>
+                <ProgressBar value={Number(job.progress)} color={t.accent} />
+              </div>
             )}
-            <button
-              style={{ ...s.btn, background: "#3a1a1a", color: "#f44336" }}
-              onClick={() => removeJob(job.id)}
-            >
-              Sil
-            </button>
-          </div>
-        </div>
-      ))}
+
+            {job.error_message && (
+              <div style={{ fontSize: 10.5, color: t.bad, marginTop: 8, lineHeight: 1.4 }}>{job.error_message}</div>
+            )}
+
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              {job.status === "DONE" && (
+                <Button variant="secondary" full onClick={() => handleApplyToPremiere(job)}>
+                  Premiere'e Uygula
+                </Button>
+              )}
+              <Button
+                variant="secondary"
+                full
+                onClick={() => handleRemove(job.id)}
+                style={{ color: t.bad, flex: job.status === "DONE" ? 1 : undefined }}
+              >
+                Sil
+              </Button>
+            </div>
+          </Card>
+        );
+      })}
     </div>
   );
 };
