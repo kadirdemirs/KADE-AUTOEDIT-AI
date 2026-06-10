@@ -1,29 +1,42 @@
 import { useCallback, useEffect, useState } from "react";
 import { Clip } from "../types";
-import { premiereAPI } from "../services/premiere";
+import { premiereAPI, getLastDiag } from "../services/premiere";
 
 // Single source of truth for "which clip on the Premiere timeline are we editing".
-// Every tool (Auto Edit + each module) reads the currently selected clip from here
-// instead of asking the user to upload a file. Picks the first selected clip whose
-// media path is readable (falls back to the first selection).
+// Every tool reads the selected clip from here instead of asking for a file upload.
 export function useTimelineClip() {
   const [available] = useState(() => premiereAPI.isAvailable());
   const [clip, setClip] = useState<Clip | null>(null);
+  const [clips, setClips] = useState<Clip[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [diag, setDiag] = useState<string>("");
 
   const refresh = useCallback(async () => {
     if (!premiereAPI.isAvailable()) {
       setClip(null);
+      setDiag("Premiere bulunamadı (panel Premiere içinde değil).");
       return;
     }
     setRefreshing(true);
     try {
-      const clips = await premiereAPI.getSelectedClips();
-      const withMedia = clips.find((c) => !!c.mediaPath) || clips[0] || null;
+      const seq = await premiereAPI.getActiveSequence();
+      const found = await premiereAPI.getSelectedClips();
+      setClips(found);
+      const withMedia = found.find((c) => !!c.mediaPath) || found[0] || null;
       setClip(withMedia);
+
+      if (!seq) {
+        setDiag(getLastDiag() || "Aktif sequence yok. Bir sequence aç / timeline'a tıkla.");
+      } else if (found.length === 0) {
+        setDiag(`Sequence: "${seq.name}" — ama seçili klip yok. Timeline'da klibe tıkla.`);
+      } else if (!withMedia?.mediaPath) {
+        setDiag(`${found.length} klip seçili ama medya yolu okunamadı.`);
+      } else {
+        setDiag("");
+      }
     } catch (err) {
-      console.warn("Timeline clip read failed:", err);
       setClip(null);
+      setDiag(`Okuma hatası: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setRefreshing(false);
     }
@@ -34,5 +47,5 @@ export function useTimelineClip() {
   }, [refresh]);
 
   const hasMedia = !!clip?.mediaPath;
-  return { available, clip, hasMedia, refresh, refreshing };
+  return { available, clip, clips, hasMedia, refresh, refreshing, diag };
 }

@@ -437,42 +437,38 @@ export const TimelineClipCard: React.FC<{
   sourceOut?: number | null;
   onRefresh: () => void;
   refreshing?: boolean;
-}> = ({ clipName, mediaPath, start, end, sourceIn, sourceOut, onRefresh, refreshing }) => {
+  diag?: string;
+}> = ({ clipName, mediaPath, start, end, sourceIn, sourceOut, onRefresh, refreshing, diag }) => {
   const { t } = useTheme();
   const hasMedia = !!mediaPath;
+  const fileName = mediaPath ? mediaPath.replace(/\\/g, "/").split("/").pop() : null;
   return (
     <div
+      className="kade-card"
       style={{
-        background: t.surface,
-        border: `1px solid ${hasMedia ? t.accent : t.border}`,
-        borderRadius: 8,
-        padding: 12,
+        background: hasMedia ? `${t.good}14` : t.surface2,
+        border: `1px solid ${hasMedia ? t.good : t.border}`,
+        borderRadius: 10,
+        padding: "10px 12px",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 15 }}>{hasMedia ? "🎬" : "⏳"}</span>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12.5, fontWeight: 800, color: t.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {clipName || "Seçili klip yok"}
-          </div>
+      <span style={{ fontSize: 18 }}>{hasMedia ? "🎬" : "🎯"}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: t.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {hasMedia ? clipName || fileName : "Klip seçilmedi"}
         </div>
-        <Button variant="secondary" onClick={onRefresh} style={{ padding: "6px 10px", fontSize: 11 }}>
-          {refreshing ? "..." : "↻ Yenile"}
-        </Button>
-      </div>
-      <div style={{ fontSize: 11, color: t.textDim, lineHeight: 1.45, marginTop: 6 }}>
-        {hasMedia
-          ? `Medya: ${mediaPath}`
-          : "Premiere timeline'da bir klip seç, sonra Yenile'ye bas."}
-      </div>
-      {hasMedia && start != null && end != null && (
-        <div style={{ fontSize: 10.5, color: t.textFaint, marginTop: 4 }}>
-          Timeline: {start.toFixed(1)}s - {end.toFixed(1)}s
-          {sourceIn != null && sourceOut != null
-            ? ` · Kaynak: ${sourceIn.toFixed(1)}s - ${sourceOut.toFixed(1)}s`
-            : ""}
+        <div style={{ fontSize: 10.5, color: hasMedia ? t.good : t.textDim, lineHeight: 1.4, marginTop: 1 }}>
+          {hasMedia
+            ? `Hazır${start != null && end != null ? ` · ${start.toFixed(1)}–${end.toFixed(1)}s` : ""}`
+            : diag || "Timeline'da bir klibe tıkla, sonra Yenile."}
         </div>
-      )}
+      </div>
+      <Button variant="secondary" onClick={onRefresh} style={{ padding: "7px 12px", fontSize: 13, flexShrink: 0 }}>
+        <span className={refreshing ? "kade-pulse" : undefined}>↻</span>
+      </Button>
     </div>
   );
 };

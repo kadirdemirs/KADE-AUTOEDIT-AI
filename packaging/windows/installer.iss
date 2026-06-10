@@ -40,26 +40,20 @@ Name: "autostart"; Description: "Windows baslangicinda KADE servisini otomatik b
 Name: "desktopicon"; Description: "Masaustu kisayolu olustur"; GroupDescription: "Kisayollar:"; Flags: unchecked
 
 [Files]
-; PyInstaller onedir ciktisinin tamami
+; PyInstaller onedir ciktisinin tamami (arka plan servisi)
 Source: "..\..\dist\kade-backend\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
-; Panel .ccx (varsa) — kullanici Premiere'e cift tiklayip kurar
-Source: "..\..\dist\KADE-AutoEdit.ccx"; DestDir: "{app}"; Flags: skipifsourcedoesntexist
-; Panel klasoru — installer calisinca Premiere UXP External Extensions altina kalici kopyalanir
-Source: "..\..\panel\dist\*"; DestDir: "{userappdata}\Adobe\UXP\Plugins\External\{#PluginFolder}"; Flags: recursesubdirs createallsubdirs ignoreversion
+; Panel .ccx — installer bunu UPIA ile Premiere'e sessizce kurar (asagida [Run]).
+; (Elle External klasore kopyalamak Premiere 26'da ISE YARAMAZ: premierepro.json'a
+;  yazilmasi gerek, bunu sadece UPIA/cift-tik yapabilir. Bu yuzden UPIA kullaniyoruz.)
+Source: "..\..\dist\KADE-AutoEdit.ccx"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-; The panel is copied straight into Premiere's UXP plugins folder below, so the
-; only shortcuts the user needs are: start the background service manually if it
-; ever stops, and uninstall. No UXP Developer Tool, no manual .ccx step.
+; Panel UPIA ile Premiere'e kalici kuruluyor (UXP Developer Tool gerekmez).
+; Kullaniciya sadece: servisi gerekirse baslat + kaldir.
 Name: "{group}\KADE AutoEdit AI Servisi (gerekirse baslat)"; Filename: "{app}\kade-backend.exe"
+Name: "{group}\Paneli Premiere'e yeniden kur"; Filename: "{commoncf}\Adobe\Adobe Desktop Common\RemoteComponents\UPI\UnifiedPluginInstallerAgent\UnifiedPluginInstallerAgent.exe"; Parameters: "/install ""{app}\KADE-AutoEdit.ccx"""; Flags: createonlyiffileexists
 Name: "{group}\{cm:UninstallProgram,KADE AutoEdit AI}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\KADE AutoEdit AI"; Filename: "{app}\kade-backend.exe"; Tasks: desktopicon
-
-[InstallDelete]
-Type: filesandordirs; Name: "{userappdata}\Adobe\UXP\Plugins\External\{#PluginFolder}"
-
-[UninstallDelete]
-Type: filesandordirs; Name: "{userappdata}\Adobe\UXP\Plugins\External\{#PluginFolder}"
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
@@ -67,7 +61,18 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
   Tasks: autostart; Flags: uninsdeletevalue
 
 [Run]
-; Start the backend right after install so the user can open Premiere and the
-; panel is immediately online — no extra step.
+; 1) Paneli Premiere'e UPIA ile sessizce kur (Developer Tool YOK, cift-tik YOK).
+;    UPIA Creative Cloud ile gelir; yolu Common Files altinda sabittir.
+Filename: "{commoncf}\Adobe\Adobe Desktop Common\RemoteComponents\UPI\UnifiedPluginInstallerAgent\UnifiedPluginInstallerAgent.exe"; \
+  Parameters: "/install ""{app}\KADE-AutoEdit.ccx"""; \
+  StatusMsg: "KADE paneli Premiere'e kuruluyor..."; \
+  Flags: runhidden waituntilterminated skipifdoesntexist
+; 2) Arka plan servisini hemen baslat (panel acilinca cevrimici olsun).
 Filename: "{app}\kade-backend.exe"; Description: "KADE servisini simdi baslat"; \
   Flags: nowait postinstall
+
+[UninstallRun]
+; Kaldirirken paneli de UPIA ile temizle.
+Filename: "{commoncf}\Adobe\Adobe Desktop Common\RemoteComponents\UPI\UnifiedPluginInstallerAgent\UnifiedPluginInstallerAgent.exe"; \
+  Parameters: "/remove ""{#PluginId}"""; \
+  Flags: runhidden skipifdoesntexist; RunOnceId: "RemoveKadePanel"

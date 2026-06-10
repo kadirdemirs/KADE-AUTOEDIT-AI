@@ -25,9 +25,60 @@
         min-height: 0;
         overflow-y: auto;
       }
+      /* Entrance + interaction animations (UXP supports CSS animations). */
+      @keyframes kadeFadeUp {
+        from { opacity: 0; transform: translateY(8px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes kadePop {
+        0%   { transform: scale(0.96); }
+        60%  { transform: scale(1.02); }
+        100% { transform: scale(1); }
+      }
+      @keyframes kadePulse {
+        0%,100% { opacity: 1; }
+        50%     { opacity: 0.45; }
+      }
+      .kade-card {
+        animation: kadeFadeUp 0.32s ease both;
+        transition: transform 0.14s ease, border-color 0.14s ease, background 0.14s ease, box-shadow 0.14s ease;
+      }
+      .kade-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 18px rgba(0,0,0,0.28);
+      }
+      .kade-card:active { transform: scale(0.97); }
+      .kade-pulse { animation: kadePulse 1.4s ease-in-out infinite; }
+      .kade-pop { animation: kadePop 0.28s ease both; }
     </style>
   </head>
   <body>
     <div id="root"></div>
+    <div id="boot-error" style="display:none; padding:16px; color:#ff6b6b; font-family:monospace; font-size:12px; white-space:pre-wrap; line-height:1.5;"></div>
+    <script>
+      // Boot-time guard: any error before/while React mounts (parse errors,
+      // missing globals, mount crashes) is shown here instead of a blank panel.
+      (function () {
+        var box = document.getElementById("boot-error");
+        function show(msg) {
+          if (!box) return;
+          box.style.display = "block";
+          box.textContent = "Panel hatasi:\n" + msg;
+        }
+        window.addEventListener("error", function (e) {
+          show((e.error && e.error.stack) ? e.error.stack : (e.message || String(e)));
+        });
+        window.addEventListener("unhandledrejection", function (e) {
+          show("Promise: " + ((e.reason && e.reason.stack) ? e.reason.stack : String(e.reason)));
+        });
+        // If React never mounts in 4s, surface that too.
+        setTimeout(function () {
+          var root = document.getElementById("root");
+          if (root && root.childElementCount === 0 && box.style.display === "none") {
+            show("React mount olmadi (root bos). index.js yuklenemedi veya sessizce durdu.");
+          }
+        }, 4000);
+      })();
+    </script>
   </body>
 </html>

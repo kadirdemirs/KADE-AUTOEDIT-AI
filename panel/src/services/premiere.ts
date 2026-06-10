@@ -6,11 +6,28 @@ import { Clip, CutPoint, EditPlan } from "../types";
 declare const require: (module: string) => unknown;
 
 type PremiereModule = {
+  app?: { project?: unknown };
   Project?: { getActiveProject?: () => Promise<unknown> };
   TickTime?: { createWithSeconds?: (seconds: number) => unknown };
   Markers?: { getMarkers?: (owner: unknown) => unknown };
   SequenceEditor?: { getEditor?: (sequence: unknown) => unknown };
+  ClipProjectItem?: { cast?: (item: unknown) => unknown };
 };
+
+// Premiere 26: the media path lives on ClipProjectItem, not ProjectItem.
+// Cast the ProjectItem first, then read getMediaFilePath().
+function mediaPathOf(ppro: PremiereModule | null, projectItem: unknown): string | null {
+  if (!projectItem) return null;
+  // Direct attempt (older surface) first.
+  const direct = maybeCallString(projectItem, "getMediaFilePath");
+  if (direct) return direct;
+  try {
+    const clip = ppro?.ClipProjectItem?.cast?.(projectItem);
+    return maybeCallString(clip, "getMediaFilePath");
+  } catch {
+    return null;
+  }
+}
 
 function getUXP(): { host: { bringToFront: () => void } } | null {
   try {
@@ -49,28 +66,115 @@ function maybeCallString(target: unknown, method: string): string | null {
   }
 }
 
+// Diagnostic trail so the panel can show WHY a sequence/clip wasn't found.
+let lastDiag = "";
+export function getLastDiag(): string {
+  return lastDiag;
+}
+
 async function getUXPSequence(): Promise<unknown | null> {
   const ppro = getPremiere();
-  const project = await ppro?.Project?.getActiveProject?.();
-  if (!project || typeof project !== "object" || !("getActiveSequence" in project)) return null;
-  const sequence = await (project as { getActiveSequence: () => Promise<unknown> }).getActiveSequence();
+  if (!ppro) { lastDiag = "premierepro modülü yok (panel Premiere içinde değil?)"; return null; }
+
+  // Diagnostic: what does the premierepro module actually expose?
+  const keys = (() => { try { return Object.keys(ppro as object).slice(0, 12).join(","); } catch { return "?"; } })();
+
+  // Try several documented + alternative ways to reach the active project.
+  let project: unknown = null;
+  let how = "";
+  try {
+    const app = (ppro as { app?: { project?: unknown } }).app;
+    if (app?.project) { project = app.project; how = "app.project"; }
+  } catch { /* ignore */ }
+  if (!project && typeof ppro.Project?.getActiveProject === "function") {
+    try {
+      project = await (ppro.Project.getActiveProject() as unknown);
+      how = "Project.getActiveProject";
+    } catch (e) {
+      lastDiag = "getActiveProject hata: " + (e instanceof Error ? e.message : String(e));
+    }
+  }
+  if (!project || typeof project !== "object") {
+    lastDiag = lastDiag || `Aktif proje yok. ppro anahtarları: [${keys}]`;
+    return null;
+  }
+  void how;
+
+  const proj = project as { getActiveSequence?: () => unknown; activeSequence?: unknown };
+  let sequence: unknown = null;
+  try {
+    if (typeof proj.getActiveSequence === "function") {
+      sequence = await (proj.getActiveSequence() as unknown);
+    } else if (proj.activeSequence) {
+      sequence = proj.activeSequence;
+    }
+  } catch (e) {
+    lastDiag = "getActiveSequence hata: " + (e instanceof Error ? e.message : String(e));
+  }
+  if (!sequence) { lastDiag = lastDiag || "Aktif sequence yok (proje var, sequence yok)."; }
   return sequence || null;
 }
 
-async function evalScript(script: string): Promise<string> {
-  try {
-    const uxp = getUXP();
-    if (!uxp) throw new Error("UXP not available");
-    // In UXP context, use csInterface or evalScript
-    // This is a placeholder for the actual UXP ExtendScript bridge
-    const result = await (window as unknown as {
-      __adobe_cep__: { evalScript: (s: string, cb: (r: string) => void) => void };
-    }).__adobe_cep__.evalScript(script, (r) => r);
-    return String(result);
-  } catch (err) {
-    console.warn("ExtendScript eval failed:", err);
-    return "null";
+// Read track items from a selection across PPro version differences:
+// getTrackItems() may be parameterless or take (trackItemType, includeEmpty).
+function readTrackItems(selection: unknown): unknown[] {
+  if (!selection || typeof selection !== "object" || !("getTrackItems" in selection)) return [];
+  const fn = (selection as { getTrackItems: (...a: unknown[]) => unknown }).getTrackItems;
+  if (typeof fn !== "function") return [];
+  // Try parameterless first, then the 2-arg form (1 = video, true = include empty).
+  for (const args of [[], [1, false], [1, true]]) {
+    try {
+      const items = fn.apply(selection, args);
+      if (Array.isArray(items) && items.length) return items;
+      if (Array.isArray(items)) return items; // empty but valid
+    } catch {
+      /* try next signature */
+    }
   }
+  return [];
+}
+
+// Walk every video track of a sequence and collect all clip track items.
+// Used when nothing is selected — operate on the whole timeline.
+function readAllTrackItems(sequence: unknown): unknown[] {
+  const seq = sequence as {
+    getVideoTrackCount?: () => number;
+    getVideoTrack?: (i: number) => unknown;
+    videoTracks?: { numTracks?: number; [i: number]: unknown };
+  };
+  const out: unknown[] = [];
+  const count =
+    typeof seq.getVideoTrackCount === "function"
+      ? seq.getVideoTrackCount()
+      : seq.videoTracks?.numTracks ?? 0;
+  for (let i = 0; i < count; i++) {
+    const track =
+      typeof seq.getVideoTrack === "function" ? seq.getVideoTrack(i) : seq.videoTracks?.[i];
+    if (!track || typeof track !== "object") continue;
+    const getItems = (track as { getTrackItems?: (...a: unknown[]) => unknown }).getTrackItems;
+    if (typeof getItems !== "function") continue;
+    for (const args of [[1, false], [1, true], []]) {
+      try {
+        const items = getItems.apply(track, args);
+        if (Array.isArray(items) && items.length) {
+          out.push(...items);
+          break;
+        }
+        if (Array.isArray(items)) break; // valid but empty track
+      } catch {
+        /* try next signature */
+      }
+    }
+  }
+  return out;
+}
+
+// Premiere 26+ uses the modern UXP `premierepro` API, not the legacy CEP
+// `__adobe_cep__.evalScript` bridge (which doesn't exist here and used to spam the
+// console with "UXP not available"). This is a no-op stub kept only so older code
+// paths compile; every real operation goes through the `premierepro` module above.
+async function evalScript(_script: string): Promise<string> {
+  return "null";
 }
 
 export const premiereAPI = {
@@ -83,81 +187,60 @@ export const premiereAPI = {
         duration: secondsOf(seq.getEndTime?.()),
       };
     }
-
-    const result = await evalScript(`
-      var seq = app.project.activeSequence;
-      if (seq) JSON.stringify({ name: seq.name, duration: seq.end - seq.start });
-      else 'null';
-    `);
-    try { return JSON.parse(result); } catch { return null; }
+    return null;
   },
 
   async getSelectedClips(): Promise<Clip[]> {
+    const ppro = getPremiere();
     const uxpSequence = await getUXPSequence();
-    if (uxpSequence && typeof uxpSequence === "object" && "getSelection" in uxpSequence) {
+    if (!uxpSequence || typeof uxpSequence !== "object") return [];
+
+    const mapItem = (item: unknown, index: number): Clip => {
+      const clip = item as {
+        getName?: () => string;
+        getStartTime?: () => unknown;
+        getEndTime?: () => unknown;
+        getDuration?: () => unknown;
+        getIsSelected?: () => boolean;
+        getInPoint?: () => unknown;
+        getOutPoint?: () => unknown;
+        getProjectItem?: () => unknown;
+      };
+      const projectItem = clip.getProjectItem?.();
+      return {
+        id: `${clip.getName?.() || "clip"}-${index}-${secondsOf(clip.getStartTime?.())}`,
+        name: clip.getName?.() || `Clip ${index + 1}`,
+        start: secondsOf(clip.getStartTime?.()),
+        end: secondsOf(clip.getEndTime?.()),
+        duration: secondsOf(clip.getDuration?.()),
+        selected: clip.getIsSelected?.() ?? true,
+        mediaPath: mediaPathOf(ppro, projectItem),
+        sourceIn: clip.getInPoint ? secondsOf(clip.getInPoint()) : null,
+        sourceOut: clip.getOutPoint ? secondsOf(clip.getOutPoint()) : null,
+      };
+    };
+
+    // 1) Prefer the explicit selection.
+    if ("getSelection" in uxpSequence) {
       try {
-        const selection = (uxpSequence as { getSelection: () => unknown }).getSelection();
-        const items =
-          selection && typeof selection === "object" && "getTrackItems" in selection
-            ? ((selection as { getTrackItems: () => unknown[] }).getTrackItems() || [])
-            : [];
-        return items.map((item, index) => {
-          const clip = item as {
-            getName?: () => string;
-            getStartTime?: () => unknown;
-            getEndTime?: () => unknown;
-            getDuration?: () => unknown;
-            getIsSelected?: () => boolean;
-            getInPoint?: () => unknown;
-            getOutPoint?: () => unknown;
-            getProjectItem?: () => unknown;
-          };
-          const projectItem = clip.getProjectItem?.();
-          const mediaPath = maybeCallString(projectItem, "getMediaFilePath");
-          return {
-            id: `${clip.getName?.() || "clip"}-${index}-${secondsOf(clip.getStartTime?.())}`,
-            name: clip.getName?.() || `Clip ${index + 1}`,
-            start: secondsOf(clip.getStartTime?.()),
-            end: secondsOf(clip.getEndTime?.()),
-            duration: secondsOf(clip.getDuration?.()),
-            selected: clip.getIsSelected?.() ?? true,
-            mediaPath,
-            sourceIn: clip.getInPoint ? secondsOf(clip.getInPoint()) : null,
-            sourceOut: clip.getOutPoint ? secondsOf(clip.getOutPoint()) : null,
-          };
-        });
+        const selection = await ((uxpSequence as { getSelection: () => unknown }).getSelection() as unknown);
+        const items = readTrackItems(selection);
+        if (items.length) return items.map(mapItem);
       } catch (err) {
         console.warn("UXP selection read failed:", err);
       }
     }
 
-    const result = await evalScript(`
-      var seq = app.project.activeSequence;
-      var clips = [];
-      if (seq) {
-        for (var t = 0; t < seq.videoTracks.numTracks; t++) {
-          var track = seq.videoTracks[t];
-          for (var c = 0; c < track.clips.numItems; c++) {
-            var clip = track.clips[c];
-            if (clip.isSelected()) {
-              clips.push({
-                id: clip.nodeId,
-                name: clip.name,
-                start: clip.start.seconds,
-                end: clip.end.seconds,
-                duration: clip.duration.seconds,
-                selected: true,
-                mediaPath: clip.projectItem && (clip.projectItem.getMediaPath ? clip.projectItem.getMediaPath() : clip.projectItem.getMediaFilePath ? clip.projectItem.getMediaFilePath() : null),
-                sourceIn: clip.inPoint ? clip.inPoint.seconds : null,
-                sourceOut: clip.outPoint ? clip.outPoint.seconds : null
-              });
-            }
-          }
-        }
-      }
-      JSON.stringify(clips);
-    `);
-    try { return JSON.parse(result) || []; } catch { return []; }
+    // 2) No selection → fall back to ALL clips on the timeline (AutoCut behaviour:
+    //    operate on the whole sequence when nothing is explicitly selected).
+    try {
+      const all = readAllTrackItems(uxpSequence);
+      if (all.length) return all.map(mapItem);
+    } catch (err) {
+      console.warn("UXP track scan failed:", err);
+    }
+
+    return [];
   },
 
   async applyEdits(cutPoints: CutPoint[], timelineOffset = 0): Promise<void> {

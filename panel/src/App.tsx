@@ -219,6 +219,7 @@ export const App: React.FC = () => {
             clip={timeline.clip}
             refreshClip={timeline.refresh}
             refreshing={timeline.refreshing}
+            diag={timeline.diag}
             onOpen={(target) => setView(target)}
           />
         )}

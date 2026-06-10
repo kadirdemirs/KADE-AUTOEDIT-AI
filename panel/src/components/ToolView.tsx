@@ -54,7 +54,7 @@ const APPLIES_CUTS: ModuleType[] = ["silence", "whisper", "podcast", "repeat"];
 export const ToolView: React.FC<Props> = ({ type, onBack }) => {
   const { t } = useTheme();
   const meta = MODULE_META[type];
-  const { clip, hasMedia, refresh, refreshing } = useTimelineClip();
+  const { clip, hasMedia, refresh, refreshing, diag } = useTimelineClip();
 
   const [progress, setProgress] = useState(0);
   const [running, setRunning] = useState(false);
@@ -325,6 +325,7 @@ export const ToolView: React.FC<Props> = ({ type, onBack }) => {
           sourceOut={clip?.sourceOut}
           onRefresh={refresh}
           refreshing={refreshing}
+          diag={diag}
         />
       </Field>
 
